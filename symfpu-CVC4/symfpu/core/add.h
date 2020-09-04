@@ -1,7 +1,18 @@
 /*
 ** Copyright (C) 2018 Martin Brain
 **
-** See the file LICENSE for licensing information.
+** This program is free software: you can redistribute it and/or modify
+** it under the terms of the GNU General Public License as published by
+** the Free Software Foundation, either version 3 of the License, or
+** (at your option) any later version.
+** 
+** This program is distributed in the hope that it will be useful,
+** but WITHOUT ANY WARRANTY; without even the implied warranty of
+** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+** GNU General Public License for more details.
+** 
+** You should have received a copy of the GNU General Public License
+** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 /*
@@ -48,17 +59,19 @@
 
 namespace symfpu {
 
-  // leftID is the value returned in the idLeft case (i.e. when left is not a
-  // special number and right is zero).  This is needed by FMA as the flags
-  // for left and leftID are computed differently and need to be handled differently.
+  // There are a number of variants on how this should be done.
+  // This is the implementation that handles all of them.
+  // Below are restricted versions for particular special cases.
 template <class t>
-  unpackedFloat<t> addAdditionSpecialCasesWithID (const typename t::fpt &format,
-						  const typename t::rm &roundingMode,
-						  const unpackedFloat<t> &left,
-						  const unpackedFloat<t> &leftID,
-						  const unpackedFloat<t> &right,
-						  const unpackedFloat<t> &additionResult,
-						  const typename t::prop &isAdd) {
+  unpackedFloat<t> addAdditionSpecialCasesComplete (const typename t::fpt &format,
+						    const typename t::rm &roundingMode,
+						    const unpackedFloat<t> &left,
+						    const unpackedFloat<t> &leftID,
+						    const unpackedFloat<t> &right,
+						    const typename t::prop &returnLeft,
+						    const typename t::prop &returnRight,
+						    const unpackedFloat<t> &additionResult,
+						    const typename t::prop &isAdd) {
 
   typedef typename t::prop prop;
 
@@ -96,11 +109,11 @@ template <class t>
   // Subtle trick : as the input to this will have been rounded it will have
   // an ITE with the default values "on top", thus doing the special cases
   // first (inner) rather than last (outer) allows them to be compacted better
-  return ITE(idRight,
+  return ITE(idRight || returnRight,
 	     ITE(isAdd,
 		 right,
 		 negate(format, right)),
-	     ITE(idLeft,
+	     ITE(idLeft || returnLeft,
 		 leftID,
 		 ITE(generatesNaN,
 		     unpackedFloat<t>::makeNaN(format),
@@ -111,6 +124,24 @@ template <class t>
 			     additionResult)))));
  }
 
+
+  // leftID is the value returned in the idLeft case (i.e. when left is not a
+  // special number and right is zero).  This is needed by FMA as the flags
+  // for left and leftID are computed differently and need to be handled differently.
+template <class t>
+  unpackedFloat<t> addAdditionSpecialCasesWithID (const typename t::fpt &format,
+						  const typename t::rm &roundingMode,
+						  const unpackedFloat<t> &left,
+						  const unpackedFloat<t> &leftID,
+						  const unpackedFloat<t> &right,
+						  const unpackedFloat<t> &additionResult,
+						  const typename t::prop &isAdd) {
+  return addAdditionSpecialCasesComplete<t>(format, roundingMode, left, leftID,
+					    right, typename t::prop(false), typename t::prop(false),
+					    additionResult, isAdd);
+  }
+
+
   // This is the usual case; use this one!
   template <class t>
   unpackedFloat<t> addAdditionSpecialCases (const typename t::fpt &format,
@@ -119,8 +150,25 @@ template <class t>
 					    const unpackedFloat<t> &right,
 					    const unpackedFloat<t> &additionResult,
 					    const typename t::prop &isAdd) {
-    return addAdditionSpecialCasesWithID<t>(format, roundingMode, left, left,
-					    right, additionResult, isAdd);
+    return addAdditionSpecialCasesComplete<t>(format, roundingMode, left, left,
+					      right, typename t::prop(false), typename t::prop(false),
+					      additionResult, isAdd);
+  }
+
+
+  // As above but allows the (very) far path to be accelerated
+  template <class t>
+  unpackedFloat<t> addAdditionSpecialCasesWithBypass (const typename t::fpt &format,
+						      const typename t::rm &roundingMode,
+						      const unpackedFloat<t> &left,
+						      const unpackedFloat<t> &right,
+						      const typename t::prop &returnLeft,
+						      const typename t::prop &returnRight,
+						      const unpackedFloat<t> &additionResult,
+						      const typename t::prop &isAdd) {
+    return addAdditionSpecialCasesComplete<t>(format, roundingMode, left, left,
+					      right, returnLeft, returnRight,
+					      additionResult, isAdd);
   }
 
 
@@ -230,7 +278,8 @@ template <class t>
 						const unpackedFloat<t> &left,
 						const unpackedFloat<t> &right,
 						const typename t::prop &isAdd,
-						const typename t::prop &knownInCorrectOrder) {
+						const typename t::prop &knownInCorrectOrder,
+						const exponentCompareInfo<t> &ec) {
    
    typedef typename t::bwt bwt;
    typedef typename t::fpt fpt;
@@ -242,14 +291,10 @@ template <class t>
    PRECONDITION(right.valid(format));
 
    // Work out if an effective subtraction
-   prop effectiveAdd(left.getSign() ^ right.getSign() ^ isAdd);
+   prop effectiveAdd((left.getSign() ^ right.getSign()) ^ isAdd);
    
-   // Compute exponent distance
    bwt exponentWidth(left.getExponent().getWidth() + 1);
    bwt significandWidth(left.getSignificand().getWidth());
-   exponentCompareInfo<t> ec(addExponentCompare<t>(exponentWidth, significandWidth,
-						   left.getExponent(), right.getExponent(),
-						   knownInCorrectOrder));
    
    /* Exponent difference and effective add implies a large amount about the output exponent and flags
    ** R denotes that this is possible via rounding up and incrementing the exponent
@@ -578,7 +623,38 @@ template <class t>
 			 const unpackedFloat<t> &left,
 			 const unpackedFloat<t> &right,
 			 const typename t::prop &isAdd) {
+
+   //typedef typename t::bwt bwt;
+   typedef typename t::prop prop;
+   //typedef typename t::ubv ubv;
+   //typedef typename t::sbv sbv;
+
+   PRECONDITION(left.valid(format));
+   PRECONDITION(right.valid(format));
+
    // Optimisation : add a flag which assumes that left and right are in the correct order
+   prop knownInCorrectOrder(false);
+
+   exponentCompareInfo<t> ec(addExponentCompare<t>(left.getExponent().getWidth() + 1, left.getSignificand().getWidth(),
+						   left.getExponent(), right.getExponent(), knownInCorrectOrder));
+
+   floatWithCustomRounderInfo<t> additionResult(arithmeticAdd(format, roundingMode, left, right, isAdd, knownInCorrectOrder, ec));
+
+   unpackedFloat<t> roundedAdditionResult(customRounder(format, roundingMode, additionResult.uf, additionResult.known));
+
+   unpackedFloat<t> result(addAdditionSpecialCases(format, roundingMode, left, right, roundedAdditionResult, isAdd));
+
+   POSTCONDITION(result.valid(format));
+
+   return result;
+ }
+
+ template <class t>
+   unpackedFloat<t> addWithBypass (const typename t::fpt &format,
+				   const typename t::rm &roundingMode,
+				   const unpackedFloat<t> &left,
+				   const unpackedFloat<t> &right,
+				   const typename t::prop &isAdd) {
    
    //typedef typename t::bwt bwt;
    typedef typename t::prop prop;
@@ -588,14 +664,108 @@ template <class t>
    PRECONDITION(left.valid(format));
    PRECONDITION(right.valid(format));
 
-   floatWithCustomRounderInfo<t> additionResult(arithmeticAdd(format, roundingMode, left, right, isAdd, prop(false)));
+   // Optimisation : add a flag which assumes that left and right are in the correct order
+   prop knownInCorrectOrder(false);
+
+
+   exponentCompareInfo<t> ec(addExponentCompare<t>(left.getExponent().getWidth() + 1, left.getSignificand().getWidth(),
+						   left.getExponent(), right.getExponent(), knownInCorrectOrder));
+
+   floatWithCustomRounderInfo<t> additionResult(arithmeticAdd(format, roundingMode, left, right, isAdd, knownInCorrectOrder, ec));
 
    unpackedFloat<t> roundedAdditionResult(customRounder(format, roundingMode, additionResult.uf, additionResult.known));
 
-   unpackedFloat<t> result(addAdditionSpecialCases(format, roundingMode, left, right, roundedAdditionResult, isAdd));
+   // In the "very far path", i.e. exponent difference is greater than significand length + 1
+   // addition becomes max(left,right) or max(left,right)+/-1 ULP.  This is rare in execution
+   // (to the point of being a software quality issue) but common in theorem proving.
+   // Given we have to have cases for "return left" and "return right" to handle zeros,
+   // we might as well make use of these cases to handle when addition behaves like max...
+   // Note that this is possible but more complex with just diffIsGreaterThanPrecision.
+
+   prop enableBypass(ec.diffIsGreaterThanPrecisionPlusOne &&
+		      !left.getNaN() &&  !left.getInf() &&  !left.getZero() && // Handle this as special cases
+		     !right.getNaN() && !right.getInf() && !right.getZero());
+
+
+   // Duplication but easier to recompute than to pass
+   prop effectiveAdd((left.getSign() ^ right.getSign()) ^ isAdd);
+   prop resultSign(ITE((knownInCorrectOrder || ec.leftIsMax),  // CAUTION : only true in the enableBypass case!
+		       left.getSign(),
+		       prop(!isAdd ^ right.getSign())));
+
+   prop significandEven(true);  // This is an optimisation that assumes only RNE uses this bit
+                                // This needs to be changed to implement things like roundToOdd
+                                // or for the diffIsGreaterThanPrecision case.
+   prop farRoundUp(roundingDecision<t>(roundingMode, resultSign, significandEven, !effectiveAdd, prop(true), prop(false)));
+
+   // Returns left or right unchanged if adding and rounded down or subtracting and rounded up
+   prop roundInCorrectDirection(effectiveAdd ^ farRoundUp);
+
+   prop  returnLeft(enableBypass &&  ec.leftIsMax && roundInCorrectDirection);
+   prop returnRight(enableBypass && !ec.leftIsMax && roundInCorrectDirection);
+
+   unpackedFloat<t> result(addAdditionSpecialCasesWithBypass(format, roundingMode, left, right, returnLeft, returnRight, roundedAdditionResult, isAdd));
    
    POSTCONDITION(result.valid(format));
    
+   return result;
+ }
+
+
+ // True if and only if adding these would result in a catastrophic cancellation
+ // I.E. if the addition cancells out cancelAmount or more MSBs leaving only LSBs
+ template <class t>
+   typename t::prop isCatastrophicCancellation (const typename t::fpt &format,
+						const unpackedFloat<t> &left,
+						const unpackedFloat<t> &right,
+						const typename t::bwt &cancelAmount,
+						const typename t::prop &isAdd) {
+
+   typedef typename t::bwt bwt;
+   typedef typename t::prop prop;
+   typedef typename t::ubv ubv;
+   //typedef typename t::sbv sbv;
+
+   PRECONDITION(left.valid(format));
+   PRECONDITION(right.valid(format));
+   PRECONDITION(cancelAmount >= 2);   // cancel 0 is not meaningful
+                                      // cancel 1 is common on subtract and arguably not an error
+   PRECONDITION(cancelAmount <= format.significandWidth());  // can't cancel more than you have
+
+   // 1. It has to be an effective subtraction
+   // Duplication but easier to recompute than to pass
+   prop effectiveAdd((left.getSign() ^ right.getSign()) ^ isAdd);
+
+   // 2. It must be either normal or subnormal numbers
+   prop leftSpecial(left.getNaN() || left.getInf() || left.getZero());
+   prop rightSpecial(right.getNaN() || right.getInf() || right.getZero());
+
+   // 3.A. exponents are equal and so are the leading cancelAmount bits
+   // 3.B. exponent diff is one and the smaller one is 11111, larger one is 10000
+
+   // Optimisation : add a flag which assumes that left and right are in the correct order
+   prop knownInCorrectOrder(false);
+   exponentCompareInfo<t> ec(addExponentCompare<t>(left.getExponent().getWidth() + 1, left.getSignificand().getWidth(),
+						   left.getExponent(), right.getExponent(), knownInCorrectOrder));
+
+   // Can ignore the MSB of the significand as by invariants this is always 1
+   bwt significandWidth(format.significandWidth());
+   bwt topBit(significandWidth - 2);
+   bwt bottomBit(significandWidth - cancelAmount);
+
+   ubv leftExtract(left.getSignificand.extract(topBit, bottomBit));
+   ubv rightExtract(right.getSignificand.extract(topBit, bottomBit));
+
+   prop result(ITE(!effectiveAdd && !leftSpecial && !rightSpecial,
+		   ITE(ec.diffIsZero,
+		       leftExtract == rightExtract,
+		       ITE(ec.diffIsOne,
+			   ITE(ec.leftIsMax,
+			        leftExtract.isAllZeros() && rightExtract.isAllOnes(),
+			       rightExtract.isAllZeros() &&  leftExtract.isAllOnes()),
+			   false)),
+		   false));
+
    return result;
  }
 

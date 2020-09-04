@@ -1,7 +1,18 @@
 /*
 ** Copyright (C) 2018 Martin Brain
 **
-** See the file LICENSE for licensing information.
+** This program is free software: you can redistribute it and/or modify
+** it under the terms of the GNU General Public License as published by
+** the Free Software Foundation, either version 3 of the License, or
+** (at your option) any later version.
+** 
+** This program is distributed in the hope that it will be useful,
+** but WITHOUT ANY WARRANTY; without even the implied warranty of
+** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+** GNU General Public License for more details.
+** 
+** You should have received a copy of the GNU General Public License
+** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 /*
@@ -60,7 +71,14 @@ namespace symfpu {
    // Rounding mode doesn't matter as this is a strict extension
    unpackedFloat<t> extendedAddArgument(convertFloatToFloat(format, extendedFormat, t::RTZ(), addArgument));
 
-   unpackedFloat<t> additionResult(arithmeticAdd(extendedFormat, roundingMode, arithmeticMultiplyResult, extendedAddArgument, prop(true), prop(false)).uf);
+   prop knownInCorrectOrder(false);
+   exponentCompareInfo<t> ec(addExponentCompare<t>(arithmeticMultiplyResult.getExponent().getWidth() + 1,
+						   arithmeticMultiplyResult.getSignificand().getWidth(),
+						   arithmeticMultiplyResult.getExponent(),
+						   extendedAddArgument.getExponent(),
+						   knownInCorrectOrder));
+
+   unpackedFloat<t> additionResult(arithmeticAdd(extendedFormat, roundingMode, arithmeticMultiplyResult, extendedAddArgument, prop(true), knownInCorrectOrder, ec).uf);
    // Custom rounder flags are ignored as they are not applicable in this case
 
    fpt evenMoreExtendedFormat(extendedFormat.exponentWidth() + 1, extendedFormat.significandWidth() + 2);

@@ -1,7 +1,18 @@
 /*
 ** Copyright (C) 2018 Martin Brain
 **
-** See the file LICENSE for licensing information.
+** This program is free software: you can redistribute it and/or modify
+** it under the terms of the GNU General Public License as published by
+** the Free Software Foundation, either version 3 of the License, or
+** (at your option) any later version.
+** 
+** This program is distributed in the hope that it will be useful,
+** but WITHOUT ANY WARRANTY; without even the implied warranty of
+** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+** GNU General Public License for more details.
+** 
+** You should have received a copy of the GNU General Public License
+** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 /*
@@ -99,10 +110,10 @@ unpackedFloat<t> roundToIntegral (const typename t::fpt &format,
 
   
   // Otherwise, compute rounding location
-  sbv initialRoundingPoint(packedSigWidth - exponent);  // TODO : check bounds on this
+  sbv initialRoundingPoint(expandingSubtract<t>(packedSigWidth,exponent));  // Expansion only needed in obscure formats
   sbv roundingPoint(collar<t>(initialRoundingPoint,
-			      sbv::zero(exponentWidth),
-			      unpackedSigWidth.increment()));
+			      sbv::zero(exponentWidth + 1),
+			      unpackedSigWidth.extend(1).increment()));
 
   // Round
   ubv significand(input.getSignificand());
@@ -235,7 +246,9 @@ template <class t>
  }
 
 
- 
+ // Common conversion code for both convert to sgined and to unsigned.
+ // Note that the results will be junk if it is not in bounds, etc.
+ // convertFloatToUBV and convertFloatToSBV handle all of that logic.
  template <class t>
    significandRounderResult<t> convertFloatToBV (const typename t::fpt &format,
 						 const typename t::rm &roundingMode,
@@ -252,7 +265,7 @@ template <class t>
    PRECONDITION(decimalPointPosition < targetWidth);
 
 
-   // TODO : fast path the RTZ case
+   // TODO : fast path the RTZ / don't need to round case
 
    bwt maxShift(targetWidth + 1); // + 1 as we have to shift over the guard bit
    bwt maxShiftBits(bitsToRepresent(maxShift) + 1); // +1 as we want it to be signed
@@ -264,10 +277,25 @@ template <class t>
    sbv maxShiftAmount(workingExponentWidth, maxShift);
    sbv exponent(input.getExponent().matchWidth(maxShiftAmount));
 
-   
-   // Handle zero
-   ubv significand(input.getSignificand());
+
+   // Optimisation : compact the significand in the case targetWidth < significantWidth
+   ubv inputSignificand(input.getSignificand());
+   bwt inputSignificandWidth(inputSignificand.getWidth());
+   ubv *working = NULL;
+   if (targetWidth + 2 < inputSignificandWidth) {
+
+     ubv dataAndGuard(inputSignificand.extract(inputSignificandWidth - 1, (inputSignificandWidth - targetWidth) - 1));
+     prop sticky(!inputSignificand.extract((inputSignificandWidth - targetWidth) - 2, 0).isAllZeros());
+
+     working = new ubv(dataAndGuard.append(ubv(sticky)));
+   } else {
+     working = new ubv(inputSignificand);
+   }
+   ubv significand(*working);
+   delete working;
    bwt significandWidth(significand.getWidth());
+
+   // Handle zero
    ubv zerodSignificand(significand &
 			ITE(input.getZero(), ubv::zero(significandWidth), ubv::allOnes(significandWidth)));
    ubv expandedSignificand(zerodSignificand.extend(maxShift)); // Start with the significand in the sticky position.
@@ -291,6 +319,66 @@ template <class t>
    return rounded;
  }
 
+ // A more compact version for round to zero
+ // Only handles normal, subnormal and zero cases, overflow of targetWidth will give junk.
+ // Inf, NaN, and overflow must be handled by the caller.
+ template <class t>
+   significandRounderResult<t> convertFloatToBVRTZ (const typename t::fpt &format,
+						    const unpackedFloat<t> &input,
+						    const typename t::bwt &targetWidth,
+						    const typename t::bwt &decimalPointPosition) {
+   typedef typename t::bwt bwt;
+   typedef typename t::prop prop;
+   typedef typename t::ubv ubv;
+   typedef typename t::sbv sbv;
+
+   PRECONDITION(targetWidth > 0);
+   PRECONDITION(decimalPointPosition < targetWidth);
+
+   // A working significand of the right length
+   ubv significand(input.getSignificand());
+   bwt significandWidth(significand.getWidth());
+
+   ubv significantSignificand(significand.extract(significandWidth - 1,
+						  ((targetWidth < significandWidth) ? significandWidth - targetWidth : 0)));
+   bwt ssWidth(significantSignificand.getWidth());
+
+
+   // Handle zero and fractional cases
+   sbv exponent(input.getExponent());
+   bwt exponentWidth(exponent.getWidth());
+
+   prop fraction(input.getExponent() < sbv::zero(exponentWidth));
+   ubv zerodSignificand(significantSignificand &
+			ITE(input.getZero() || fraction, ubv::zero(ssWidth), ubv::allOnes(ssWidth)));
+
+   ubv expandedSignificand(zerodSignificand.extend(targetWidth - 1)); // Start with the significand in the LSB of output
+
+
+   // Prepare exponent
+   bwt maxShift(targetWidth - 1); // - 1 as we are already at LSB
+   bwt maxShiftBits(bitsToRepresent(maxShift)); // Don't care about it being signed
+
+   ubv convertedExponent(exponent.toUnsigned());
+   bwt topExtractedBit(((maxShiftBits >  (exponentWidth - 1)) ? exponentWidth : maxShiftBits) - 1);
+
+   ubv shiftBits(convertedExponent.extract(topExtractedBit, 0));
+   ubv shiftOperand(shiftBits.matchWidth(expandedSignificand));
+
+   // Align
+   ubv shifted(expandedSignificand.modularLeftShift(shiftOperand));
+   bwt shiftedWidth(shifted.getWidth());
+
+   // Extract
+   ubv result(shifted.extract(shiftedWidth - 1, shiftedWidth - targetWidth));
+
+   return significandRounderResult<t>(result, prop(false));
+ }
+
+
+
+ // Decimal point position in the bit in the output on the left hand side of the decimal point
+ // I.E. if it is positive then it is converting to a fix-point number
  template <class t>
    typename t::ubv convertFloatToUBV (const typename t::fpt &format,
 				      const typename t::rm &roundingMode,
@@ -349,6 +437,8 @@ template <class t>
    return result;
  }
 
+  // Decimal point position in the bit in the output on the left hand side of the decimal point
+  // I.E. if it is positive then it is converting to a fix-point number
   template <class t>
     typename t::sbv convertFloatToSBV (const typename t::fpt &format,
 				       const typename t::rm &roundingMode,
