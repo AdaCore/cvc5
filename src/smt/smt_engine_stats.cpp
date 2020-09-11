@@ -48,7 +48,7 @@ SmtEngineStatistics::SmtEngineStatistics()
   smtStatisticsRegistry()->registerStat(&d_pushPopTime);
   smtStatisticsRegistry()->registerStat(&d_processAssertionsTime);
   smtStatisticsRegistry()->registerStat(&d_simplifiedToFalse);
-  smtStatisticsRegistry()->registerStat(&d_resourceUnitsUsed);
+  smtStatisticsRegistry()->registerStat(&d_resourceUnitsUsed, false);
 }
 
 SmtEngineStatistics::~SmtEngineStatistics()
@@ -66,7 +66,7 @@ SmtEngineStatistics::~SmtEngineStatistics()
   smtStatisticsRegistry()->unregisterStat(&d_pushPopTime);
   smtStatisticsRegistry()->unregisterStat(&d_processAssertionsTime);
   smtStatisticsRegistry()->unregisterStat(&d_simplifiedToFalse);
-  smtStatisticsRegistry()->unregisterStat(&d_resourceUnitsUsed);
+  smtStatisticsRegistry()->unregisterStat(&d_resourceUnitsUsed, false);
 }
 
 }  // namespace smt
