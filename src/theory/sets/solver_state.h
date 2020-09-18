@@ -2,9 +2,9 @@
 /*! \file solver_state.h
  ** \verbatim
  ** Top contributors (to current version):
- **   Andrew Reynolds
+ **   Andrew Reynolds, Mudathir Mohamed
  ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
+ ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
  ** in the top-level source directory) and their institutional affiliations.
  ** All rights reserved.  See the file COPYING in the top-level source
  ** directory for licensing information.\endverbatim
@@ -198,7 +198,7 @@ class SolverState
   Node getProxy(Node n);
   /** Get the empty set of type tn */
   Node getEmptySet(TypeNode tn);
-  /** Get the universe set of type tn */
+  /** Get the universe set of type tn if it exists or create a new one */
   Node getUnivSet(TypeNode tn);
   /**
    * Get the skolem cache of this theory, which manages a database of introduced

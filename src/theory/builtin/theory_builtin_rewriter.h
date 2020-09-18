@@ -2,9 +2,9 @@
 /*! \file theory_builtin_rewriter.h
  ** \verbatim
  ** Top contributors (to current version):
- **   Andrew Reynolds, Dejan Jovanovic, Morgan Deters
+ **   Andrew Reynolds, Andres Noetzli, Dejan Jovanovic
  ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
+ ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
  ** in the top-level source directory) and their institutional affiliations.
  ** All rights reserved.  See the file COPYING in the top-level source
  ** directory for licensing information.\endverbatim
@@ -32,18 +32,6 @@ class TheoryBuiltinRewriter : public TheoryRewriter
   static Node blastDistinct(TNode node);
 
  public:
-  /**
-   * Takes a chained application of a binary operator and returns a conjunction
-   * of binary applications of that operator.
-   *
-   * For example:
-   *
-   * (= x y z) ---> (and (= x y) (= y z))
-   *
-   * @param node A node that is a chained application of a binary operator
-   * @return A conjunction of binary applications of the chained operator
-   */
-  static Node blastChain(TNode node);
 
   static inline RewriteResponse doRewrite(TNode node)
   {
@@ -51,7 +39,6 @@ class TheoryBuiltinRewriter : public TheoryRewriter
     {
       case kind::DISTINCT:
         return RewriteResponse(REWRITE_DONE, blastDistinct(node));
-      case kind::CHAIN: return RewriteResponse(REWRITE_DONE, blastChain(node));
       default: return RewriteResponse(REWRITE_DONE, node);
     }
   }

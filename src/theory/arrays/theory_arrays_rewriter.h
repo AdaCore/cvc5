@@ -2,9 +2,9 @@
 /*! \file theory_arrays_rewriter.h
  ** \verbatim
  ** Top contributors (to current version):
- **   Clark Barrett, Morgan Deters, Dejan Jovanovic
+ **   Clark Barrett, Morgan Deters, Andrew Reynolds
  ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
+ ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
  ** in the top-level source directory) and their institutional affiliations.
  ** All rights reserved.  See the file COPYING in the top-level source
  ** directory for licensing information.\endverbatim
@@ -317,17 +317,9 @@ class TheoryArraysRewriter : public TheoryRewriter
           NodeManager* nm = NodeManager::currentNM();
           if (val) {
             // store(store(a,i,v),i,w) = store(a,i,w)
-            Node result;
-            if (value.getKind() == kind::SELECT &&
-                value[0] == store[0] &&
-                value[1] == index) {
-              result = store[0];
-            }
-            else {
-              result = nm->mkNode(kind::STORE, store[0], index, value);
-            }
+            Node result = nm->mkNode(kind::STORE, store[0], index, value);
             Trace("arrays-postrewrite") << "Arrays::postRewrite returning " << result << std::endl;
-            return RewriteResponse(REWRITE_DONE, result);
+            return RewriteResponse(REWRITE_AGAIN, result);
           }
           else if (index < store[1]) {
             // store(store(a,i,v),j,w) = store(store(a,j,w),i,v)

@@ -8,6 +8,9 @@ project](https://github.com/CVC4/CVC4).
 
 Original README
 ===============
+[![License: BSD](
+    https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](
+        https://opensource.org/licenses/BSD-3-Clause)
 
 CVC4
 ===============================================================================

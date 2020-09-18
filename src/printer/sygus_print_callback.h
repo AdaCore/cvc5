@@ -2,9 +2,9 @@
 /*! \file sygus_print_callback.h
  ** \verbatim
  ** Top contributors (to current version):
- **   Andrew Reynolds, Haniel Barbosa
+ **   Andrew Reynolds, Haniel Barbosa, Mathias Preiner
  ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
+ ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
  ** in the top-level source directory) and their institutional affiliations.
  ** All rights reserved.  See the file COPYING in the top-level source
  ** directory for licensing information.\endverbatim
@@ -45,7 +45,7 @@ namespace printer {
 class CVC4_PUBLIC SygusExprPrintCallback : public SygusPrintCallback
 {
  public:
-  SygusExprPrintCallback(Expr body, std::vector<Expr>& args);
+  SygusExprPrintCallback(Expr body, const std::vector<Expr>& args);
   ~SygusExprPrintCallback() {}
   /** print sygus term e on output out using printer p */
   virtual void toStreamSygus(const Printer* p,

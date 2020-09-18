@@ -1,3 +1,8 @@
+// Declare that all functions in the interface can throw exceptions of type
+// CVC4::Exception and exceptions in general. SWIG catches those exceptions and
+// turns them into target language exceptions via "throws" typemaps.
+%catches(CVC4::Exception,...);
+
 %import "bindings/swig.h"
 
 %include "stdint.i"
@@ -15,28 +20,6 @@ namespace std {
 }
 
 %{
-// Perl's headers define "seed" to Perl_seed, which breaks
-// gmpxx.h; undo the damage for our CVC4 module.
-#ifdef SWIGPERL
-#  undef seed
-#endif /* SWIGPERL */
-
-// OCaml's headers define "invalid_argument" and "flush" to
-// caml_invalid_argument and caml_flush, which breaks C++
-// standard headers; undo this damage
-//
-// Unfortunately, this code isn't inserted early enough.  swig puts
-// an include <stdexcept> very early, which breaks linking due to a
-// nonexistent std::caml_invalid_argument symbol.. ridiculous!
-//
-#ifdef SWIGOCAML
-#  if defined(flush) || defined(invalid_argument)
-#    error "flush" or "invalid_argument" (or both) is defined by the ocaml headers.  You must #undef it above before inclusion of <stdexcept>.
-#  endif /* flush */
-#  undef flush
-#  undef invalid_argument
-#endif /* SWIGOCAML */
-
 namespace CVC4 {}
 using namespace CVC4;
 
@@ -76,18 +59,10 @@ std::set<JavaInputStreamAdapter*> CVC4::JavaInputStreamAdapter::s_adapters;
 %}
 #endif /* SWIGPYTHON */
 
-%template(vectorCommandPtr) std::vector< CVC4::Command* >;
-%template(vectorType) std::vector< CVC4::Type >;
-%template(vectorExpr) std::vector< CVC4::Expr >;
 %template(vectorUnsignedInt) std::vector< unsigned int >;
-%template(vectorVectorExpr) std::vector< std::vector< CVC4::Expr > >;
-%template(vectorDatatypeType) std::vector< CVC4::DatatypeType >;
 %template(vectorSExpr) std::vector< CVC4::SExpr >;
 %template(vectorString) std::vector< std::string >;
-%template(vectorPairStringType) std::vector< std::pair< std::string, CVC4::Type > >;
-%template(pairStringType) std::pair< std::string, CVC4::Type >;
 %template(setOfType) std::set< CVC4::Type >;
-%template(hashmapExpr) std::unordered_map< CVC4::Expr, CVC4::Expr, CVC4::ExprHashFunction >;
 
 // This is unfortunate, but seems to be necessary; if we leave NULL
 // defined, swig will expand it to "(void*) 0", and some of swig's
@@ -96,82 +71,19 @@ std::set<JavaInputStreamAdapter*> CVC4::JavaInputStreamAdapter::s_adapters;
 
 #ifdef SWIGJAVA
 
-#include "bindings/java_iterator_adapter.h"
-#include "bindings/java_stream_adapters.h"
+// Map C++ exceptions of type CVC4::Exception to Java exceptions of type
+// edu.stanford.CVC4.Exception
+// 
+// As suggested in:
+// http://www.swig.org/Doc3.0/SWIGDocumentation.html#Java_exception_typemap
+%typemap(throws, throws="edu.stanford.CVC4.Exception") CVC4::Exception {
+  jclass excep = jenv->FindClass("edu/stanford/CVC4/Exception");
+  if (excep)
+    jenv->ThrowNew(excep, $1.what());
+  return $null;
+}
 
-%exception %{
-  try {
-    $action
-  } catch(CVC4::Exception& e) {
-    std::stringstream ss;
-    ss << e.what() << ": " << e.getMessage();
-    std::string explanation = ss.str();
-    SWIG_JavaThrowException(jenv, SWIG_JavaRuntimeException, explanation.c_str());
-  }
-%}
-
-// Create a mapping from C++ Exceptions to Java Exceptions.
-// This is in a couple of throws typemaps, simply because it's sensitive to SWIG's concept of which namespace we're in.
-%typemap(throws) Exception %{
-  std::string name = "edu/nyu/acsys/CVC4/$1_type";
-  /*
-  size_t i = name.find("::");
-  if(i != std::string::npos) {
-    size_t j = name.rfind("::");
-    assert(i <= j);
-    name.replace(i, j - i + 2, "/");
-  }
-  */
-  jclass clazz = jenv->FindClass(name.c_str());
-  assert(clazz != NULL && jenv->ExceptionOccurred() == NULL);
-  jmethodID method = jenv->GetMethodID(clazz, "<init>", "(JZ)V");
-  assert(method != NULL && jenv->ExceptionOccurred() == NULL);
-  jthrowable t = static_cast<jthrowable>(jenv->NewObject(clazz, method, reinterpret_cast<uintptr_t>(new $1_type($1)), true));
-  assert(t != NULL && jenv->ExceptionOccurred() == NULL);
-  int status = jenv->Throw(t);
-  assert(status == 0);
-%}
-%typemap(throws) CVC4::Exception %{
-  std::string name = "edu/nyu/acsys/$1_type";
-  size_t i = name.find("::");
-  if(i != std::string::npos) {
-    size_t j = name.rfind("::");
-    assert(i <= j);
-    name.replace(i, j - i + 2, "/");
-  }
-  jclass clazz = jenv->FindClass(name.c_str());
-  assert(clazz != NULL && jenv->ExceptionOccurred() == NULL);
-  jmethodID method = jenv->GetMethodID(clazz, "<init>", "(JZ)V");
-  assert(method != NULL && jenv->ExceptionOccurred() == NULL);
-  jthrowable t = static_cast<jthrowable>(jenv->NewObject(clazz, method, reinterpret_cast<uintptr_t>(new $1_type($1)), true));
-  assert(t != NULL && jenv->ExceptionOccurred() == NULL);
-  int status = jenv->Throw(t);
-  assert(status == 0);
-%}
-
-%typemap(throws) CVC4::ModalException = CVC4::Exception;
-%typemap(throws) CVC4::LogicException = CVC4::Exception;
-%typemap(throws) CVC4::OptionException = CVC4::Exception;
-%typemap(throws) CVC4::IllegalArgumentException = CVC4::Exception;
-%typemap(throws) CVC4::AssertionException = CVC4::Exception;
-
-%typemap(throws) CVC4::TypeCheckingException = CVC4::Exception;
-%typemap(throws) CVC4::ScopeException = CVC4::Exception;
-%typemap(throws) CVC4::IllegalArgumentException = CVC4::Exception;
-%typemap(throws) IllegalArgumentException = Exception;
-%typemap(throws) CVC4::AssertionException = CVC4::Exception;
-
-// TIM: Really unclear why both of these are required
-%typemap(throws) CVC4::UnsafeInterruptException = CVC4::Exception;
-%typemap(throws) UnsafeInterruptException = CVC4::Exception;
-%typemap(throws) CVC4::parser::InputStreamException = CVC4::Exception;
-%typemap(throws) CVC4::parser::ParserException = CVC4::Exception;
-
-// Generate an error if the mapping from C++ CVC4 Exception to Java CVC4 Exception doesn't exist above
-%typemap(throws) SWIGTYPE, SWIGTYPE &, SWIGTYPE *, SWIGTYPE [], SWIGTYPE [ANY] %{
-#error "exception $1_type doesn't map to Java correctly---please edit src/cvc4.i and add it"
-%}
-
+%include "bindings/java_iterator_adapter.i"
 %include "java/typemaps.i" // primitive pointers and references
 %include "java/std_string.i" // map std::string to java.lang.String
 %include "java/arrays_java.i" // C arrays to Java arrays
@@ -186,17 +98,17 @@ std::set<JavaInputStreamAdapter*> CVC4::JavaInputStreamAdapter::s_adapters;
 %typemap(jtype) std::ostream& "long"
 %typemap(jstype) std::ostream& "java.io.OutputStream"
 %typemap(javain,
-         pre="    edu.nyu.acsys.CVC4.JavaOutputStreamAdapter temp$javainput = new edu.nyu.acsys.CVC4.JavaOutputStreamAdapter();", pgcppname="temp$javainput",
+         pre="    edu.stanford.CVC4.JavaOutputStreamAdapter temp$javainput = new edu.stanford.CVC4.JavaOutputStreamAdapter();", pgcppname="temp$javainput",
          post="    new java.io.PrintStream($javainput).print(temp$javainput.toString());")
-         std::ostream& "edu.nyu.acsys.CVC4.JavaOutputStreamAdapter.getCPtr(temp$javainput)"
+         std::ostream& "edu.stanford.CVC4.JavaOutputStreamAdapter.getCPtr(temp$javainput)"
 
 %typemap(jni) std::istream& "jlong"
 %typemap(jtype) std::istream& "long"
 %typemap(jstype) std::istream& "java.io.InputStream"
 %typemap(javain,
-         pre="    edu.nyu.acsys.CVC4.JavaInputStreamAdapter temp$javainput = edu.nyu.acsys.CVC4.JavaInputStreamAdapter.get($javainput);", pgcppname="temp$javainput",
+         pre="    edu.stanford.CVC4.JavaInputStreamAdapter temp$javainput = edu.stanford.CVC4.JavaInputStreamAdapter.get($javainput);", pgcppname="temp$javainput",
          post="")
-         std::istream& "edu.nyu.acsys.CVC4.JavaInputStreamAdapter.getCPtr(temp$javainput)"
+         std::istream& "edu.stanford.CVC4.JavaInputStreamAdapter.getCPtr(temp$javainput)"
 %typemap(in) jobject inputStream %{
   $1 = jenv->NewGlobalRef($input);
 %}
@@ -228,28 +140,6 @@ std::set<JavaInputStreamAdapter*> CVC4::JavaInputStreamAdapter::s_adapters;
 %javamethodmodifiers CVC4::JavaInputStreamAdapter::getInputStream() const "private";
 %javamethodmodifiers CVC4::JavaInputStreamAdapter::JavaInputStreamAdapter(jobject) "private";
 
-%exception CVC4::parser::Parser::nextCommand() %{
-  try {
-    CVC4::JavaInputStreamAdapter::pullAdapters(jenv);
-    $action
-  } catch(CVC4::Exception& e) {
-    std::stringstream ss;
-    ss << e.what() << ": " << e.getMessage();
-    std::string explanation = ss.str();
-    SWIG_JavaThrowException(jenv, SWIG_JavaRuntimeException, explanation.c_str());
-  }
-%}
-%exception CVC4::parser::Parser::nextExpression() %{
-  try {
-    CVC4::JavaInputStreamAdapter::pullAdapters(jenv);
-    $action
-  } catch(CVC4::Exception& e) {
-    std::stringstream ss;
-    ss << e.what() << ": " << e.getMessage();
-    std::string explanation = ss.str();
-    SWIG_JavaThrowException(jenv, SWIG_JavaRuntimeException, explanation.c_str());
-  }
-%}
 %exception CVC4::JavaInputStreamAdapter::~JavaInputStreamAdapter() %{
   try {
     jenv->DeleteGlobalRef(arg1->getInputStream());
@@ -299,6 +189,8 @@ std::set<JavaInputStreamAdapter*> CVC4::JavaInputStreamAdapter::s_adapters;
   JCALL3(ReleaseByteArrayElements, jenv, ba, bae, 0);
 }
 
+%include "bindings/java_stream_adapters.h"
+
 #endif /* SWIGJAVA */
 
 // TIM:
@@ -322,10 +214,10 @@ std::set<JavaInputStreamAdapter*> CVC4::JavaInputStreamAdapter::s_adapters;
 %include "util/hash.i"
 %include "util/proof.i"
 %include "util/regexp.i"
-%include "util/resource_manager.i"
 %include "util/result.i"
 %include "util/sexpr.i"
 %include "util/statistics.i"
+%include "util/string.i"
 %include "util/tuple.i"
 %include "util/unsafe_interrupt_exception.i"
 
@@ -333,8 +225,7 @@ std::set<JavaInputStreamAdapter*> CVC4::JavaInputStreamAdapter::s_adapters;
 %include "expr/array_store_all.i"
 %include "expr/ascription_type.i"
 %include "expr/emptyset.i"
-%include "expr/datatype.i"
-%include "expr/record.i"
+%include "expr/expr_sequence.i"
 %include "proof/unsat_core.i"
 
 // TIM:
@@ -346,18 +237,17 @@ std::set<JavaInputStreamAdapter*> CVC4::JavaInputStreamAdapter::s_adapters;
 
 // TIM:
 // The remainder of the includes:
+%include "expr/datatype.i"
 %include "expr/expr.i"
 %include "expr/expr_manager.i"
-%include "expr/expr_stream.i"
-%include "expr/symbol_table.i"
 %include "expr/variable_type_map.i"
 %include "options/option_exception.i"
 %include "options/options.i"
-%include "parser/cvc4parser.i"
-%include "smt/command.i"
 %include "smt/logic_exception.i"
 %include "theory/logic_info.i"
 %include "theory/theory_id.i"
+
+%include "expr/array_store_all.i"
 
 // Tim: This should come after "theory/logic_info.i".
 %include "smt/smt_engine.i"

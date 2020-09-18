@@ -4,7 +4,7 @@
  ** Top contributors (to current version):
  **   Morgan Deters, Tim King, Liana Hadarean
  ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
+ ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
  ** in the top-level source directory) and their institutional affiliations.
  ** All rights reserved.  See the file COPYING in the top-level source
  ** directory for licensing information.\endverbatim
@@ -82,7 +82,7 @@ class OutputChannel {
    *
    * @throws Interrupted if the theory can be safely interrupted.
    */
-  virtual void safePoint(uint64_t amount) {}
+  virtual void safePoint(ResourceManager::Resource r) {}
 
   /**
    * Indicate a theory conflict has arisen.
@@ -172,7 +172,7 @@ class OutputChannel {
    * long-running operations, they cannot rely on resource() to break
    * out of infinite or intractable computations.
    */
-  virtual void spendResource(unsigned amount) {}
+  virtual void spendResource(ResourceManager::Resource r) {}
 
   /**
    * Handle user attribute.

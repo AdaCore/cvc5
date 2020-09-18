@@ -1,5 +1,5 @@
-CVC4 prerelease version 1.8.
-============================
+CVC4 release version 1.8
+========================
 
 ## Building CVC4
 
@@ -73,6 +73,19 @@ incorrect behavior (and wrong results) in many builds. This is a known problem
 for MiniSat, and since MiniSat is at the core of CVC4, a problem for CVC4.
 We recommend using a GCC version > 4.5.1.
 
+### Warning: Installing GMP via `contrib/get-gmp-dev`
+
+Do **not** install GMP via the provided script `contrib/get-gmp-dev` unless
+your distribution
+* does not ship with the GMP configuration you need, e.g.,
+  script `contrib/get-win-dependencies` uses `contrib/get-gmp-dev` when
+  cross-compiling GMP for Windows.
+* does not ship with static GMP libraries (e.g., Arch Linux)
+  and you want to build CVC4 statically.
+
+In most of the cases the GMP version installed on your system is the one you
+want and should use.
+
 ## Optional Dependencies
 
 ### SymFPU (Support for the Theory of Floating Point Numbers)
@@ -101,6 +114,15 @@ It can be installed using the `contrib/get-cryptominisat` script.
 Configure CVC4 with `configure.sh --cryptominisat` to build with this
 dependency.
 
+### Kissat (Optional SAT solver)
+
+[Kissat](https://github.com/arminbiere/kissat)
+is a SAT solver that can be used for solving bit-vector problems with eager
+bit-blasting. This dependency may improve performance.
+It can be installed using the `contrib/get-kissat` script.  
+Configure CVC4 with `configure.sh --kissat` to build with this
+dependency.
+
 ### LFSC (The LFSC Proof Checker)
 
 [LFSC](https://github.com/CVC4/LFSC) is required to check proofs internally
@@ -110,7 +132,7 @@ Configure CVC4 with `configure.sh --lfsc` to build with this dependency.
 ### SWIG >= 3.0.x (Simplified Wrapper and Interface Generator)
 
 SWIG 3.0.x (and a JDK) is necessary to build the Java API.
-See [Language Bindings](language-bindings) below for build instructions.
+See [Language Bindings](#language-bindings) below for build instructions.
 
 ### CLN >= v1.3 (Class Library for Numbers)
 
@@ -166,13 +188,6 @@ If you choose to use CVC4 with GNU Readline support, you are licensing CVC4
 under that same license.
 (Usually CVC4's license is more permissive; see above discussion.)
 
-### libboost_thread: The Boost C++ threading library (Portfolio Builds)
-
-The [Boost](http://www.boost.org) C++ threading library (often packaged
-independently of the Boost base library) is needed to run CVC4 in "portfolio"
-(multithreaded) mode.
-Check your distribution for a package named "libboost-thread-dev" or similar.
-
 ### Boost C++ base libraries (Examples)
 
 The [Boost](http://www.boost.org) C++ base library is needed for some examples
@@ -203,17 +218,7 @@ binding, please contact one of the project leaders.
 
 ## Building the Examples
 
-The examples provided in directory `examples` are not built by default.
-
-    make examples                      # build all examples
-    make runexamples                   # build and run all examples
-    make <example>                     # build examples/<subdir>/<example>.<ext>
-    ctest example/<subdir>/<example>   # run test example/<subdir>/<example>
-
-All examples binaries are built into `<build_dir>/bin/examples`.
-
-See `examples/README` for more detailed information on what to find in the
-`examples` directory.
+See `examples/README.md` for instructions on how to build and run the examples.
 
 ## Testing CVC4
 
@@ -237,24 +242,6 @@ We have 4 categories of tests:
   (label: **system**)
 - **unit tests** in directory `test/unit`
   (label: **unit**)
-
-### Testing Examples
-
-For building instructions, see [Building the Examples](building-the-examples).
-
-We use prefix `example/` + `<subdir>/` + `<example>` (for `<example>` in
-`example/<subdir>/`) as test target name.  
-
-    make bitvectors                       # build example/api/bitvectors.cpp
-    ctest -R bitvectors                   # run all tests that match '*bitvectors*'
-                                          # > runs example/api/bitvectors
-                                          # >      example/api/bitvectors_and_arrays
-                                          # >      ...
-    ctest -R bitvectors$                  # run all tests that match '*bitvectors'
-                                          # > runs example/api/bitvectors
-    ctest -R example/api/bitvectors$      # run all tests that match '*example/api/bitvectors'
-                                          # > runs example/api/bitvectors
-
 
 ### Testing System Tests
 

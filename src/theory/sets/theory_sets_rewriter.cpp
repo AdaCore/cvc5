@@ -4,7 +4,7 @@
  ** Top contributors (to current version):
  **   Andrew Reynolds, Kshitij Bansal, Paul Meng
  ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2019 by the authors listed in the file AUTHORS
+ ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
  ** in the top-level source directory) and their institutional affiliations.
  ** All rights reserved.  See the file COPYING in the top-level source
  ** directory for licensing information.\endverbatim
@@ -62,7 +62,7 @@ RewriteResponse TheorySetsRewriter::postRewrite(TNode node) {
   case kind::MEMBER: {
     if(node[0].isConst() && node[1].isConst()) {
       // both are constants
-      TNode S = preRewrite(node[1]).node;
+      TNode S = preRewrite(node[1]).d_node;
       bool isMember = checkConstantMembership(node[0], S);
       return RewriteResponse(REWRITE_DONE, nm->mkConst(isMember));
     }else if( node[1].getKind()==kind::EMPTYSET ){
