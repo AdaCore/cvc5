@@ -1379,11 +1379,6 @@ add_dependencies(cvc5-obj SymFPU)
 target_include_directories(cvc5-obj PRIVATE ${SymFPU_INCLUDE_DIR})
 target_link_libraries(cvc5 PRIVATE SymFPU)
 
-# Add rt library
-# Note: For glibc < 2.17 we have to additionally link against rt (man clock_gettime).
-#       RT_LIBRARIES should be empty for glibc >= 2.17
-target_link_libraries(cvc4 ${RT_LIBRARIES})
-
 #-----------------------------------------------------------------------------#
 # Visit main subdirectory after creating target cvc5. For target main, we have
 # to manually add library dependencies since we can't use
