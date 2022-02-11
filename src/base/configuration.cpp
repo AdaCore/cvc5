@@ -195,7 +195,7 @@ std::string Configuration::about() {
 
 std::string Configuration::short_about() {
   std::stringstream ss;
-  ss << "This is CVC4 version " << CVC4_RELEASE_STRING << std::endl;
+  ss << "This is CVC5 version " << getVersionString() << std::endl;
   return ss.str();
 }
 
