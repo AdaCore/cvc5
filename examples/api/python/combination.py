@@ -1,21 +1,23 @@
 #!/usr/bin/env python
+###############################################################################
+# Top contributors (to current version):
+#   Makai Mann, Mudathir Mohamed, Aina Niemetz
+#
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+#
+# A simple demonstration of the solving capabilities of the cvc5 combination
+# solver through the Python API. This is a direct translation of
+# combination-new.cpp.
+##
 
-#####################
-#! \file combination.py
- ## \verbatim
- ## Top contributors (to current version):
- ##   Makai Mann, Aina Niemetz
- ## This file is part of the CVC4 project.
- ## Copyright (c) 2009-2018 by the authors listed in the file AUTHORS
- ## in the top-level source directory) and their institutional affiliations.
- ## All rights reserved.  See the file COPYING in the top-level source
- ## directory for licensing information.\endverbatim
- ##
- ## \brief A simple demonstration of the solving capabilities of the CVC4
- ## combination solver through the Python API. This is a direct translation
- ## of combination-new.cpp.
-import pycvc4
-from pycvc4 import kinds
+import pycvc5
+from pycvc5 import Kind
 
 def prefixPrintGetValue(slv, t, level=0):
     print("slv.getValue({}): {}".format(t, slv.getValue(t)))
@@ -23,9 +25,8 @@ def prefixPrintGetValue(slv, t, level=0):
         prefixPrintGetValue(slv, c, level + 1)
 
 if __name__ == "__main__":
-    slv = pycvc4.Solver()
+    slv = pycvc5.Solver()
     slv.setOption("produce-models", "true")  # Produce Models
-    slv.setOption("output-language", "cvc4") # Set the output-language to CVC's
     slv.setOption("dag-thresh", "0") # Disable dagifying the output
     slv.setOption("output-language", "smt2") # use smt-lib v2 as output language
     slv.setLogic("QF_UFLIRA")
@@ -46,22 +47,22 @@ if __name__ == "__main__":
     p = slv.mkConst(intPred, "p")
 
     # Constants
-    zero = slv.mkReal(0)
-    one = slv.mkReal(1)
+    zero = slv.mkInteger(0)
+    one = slv.mkInteger(1)
 
     # Terms
-    f_x = slv.mkTerm(kinds.ApplyUf, f, x)
-    f_y = slv.mkTerm(kinds.ApplyUf, f, y)
-    sum_ = slv.mkTerm(kinds.Plus, f_x, f_y)
-    p_0 = slv.mkTerm(kinds.ApplyUf, p, zero)
-    p_f_y = slv.mkTerm(kinds.ApplyUf, p, f_y)
+    f_x = slv.mkTerm(Kind.ApplyUf, f, x)
+    f_y = slv.mkTerm(Kind.ApplyUf, f, y)
+    sum_ = slv.mkTerm(Kind.Plus, f_x, f_y)
+    p_0 = slv.mkTerm(Kind.ApplyUf, p, zero)
+    p_f_y = slv.mkTerm(Kind.ApplyUf, p, f_y)
 
     # Construct the assertions
-    assertions = slv.mkTerm(kinds.And,
+    assertions = slv.mkTerm(Kind.And,
                             [
-                                slv.mkTerm(kinds.Leq, zero, f_x), # 0 <= f(x)
-                                slv.mkTerm(kinds.Leq, zero, f_y), # 0 <= f(y)
-                                slv.mkTerm(kinds.Leq, sum_, one), # f(x) + f(y) <= 1
+                                slv.mkTerm(Kind.Leq, zero, f_x), # 0 <= f(x)
+                                slv.mkTerm(Kind.Leq, zero, f_y), # 0 <= f(y)
+                                slv.mkTerm(Kind.Leq, sum_, one), # f(x) + f(y) <= 1
                                 p_0.notTerm(), # not p(0)
                                 p_f_y # p(f(y))
                             ])
@@ -69,11 +70,11 @@ if __name__ == "__main__":
     slv.assertFormula(assertions)
 
     print("Given the following assertions:", assertions, "\n")
-    print("Prove x /= y is entailed.\nCVC4: ",
-          slv.checkEntailed(slv.mkTerm(kinds.Distinct, x, y)), "\n")
+    print("Prove x /= y is entailed.\ncvc5: ",
+          slv.checkEntailed(slv.mkTerm(Kind.Distinct, x, y)), "\n")
 
     print("Call checkSat to show that the assertions are satisfiable")
-    print("CVC4:", slv.checkSat(), "\n")
+    print("cvc5:", slv.checkSat(), "\n")
 
     print("Call slv.getValue(...) on terms of interest")
     print("slv.getValue({}): {}".format(f_x, slv.getValue(f_x)))
@@ -85,9 +86,6 @@ if __name__ == "__main__":
     print("Alternatively, iterate over assertions and call"
           " slv.getValue(...) on all terms")
     prefixPrintGetValue(slv, assertions)
-
-    print("Alternatively, print the model", "\n")
-    slv.printModel()
 
     print()
     print("You can also use nested loops to iterate over terms")

@@ -1,32 +1,33 @@
-/*********************                                                        */
-/*! \file dtype.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Morgan Deters, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief A class representing a datatype definition
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Morgan Deters, Tim King
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * A class representing a datatype definition.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__EXPR__DTYPE_H
-#define CVC4__EXPR__DTYPE_H
+#ifndef CVC5__EXPR__DTYPE_H
+#define CVC5__EXPR__DTYPE_H
 
 #include <map>
 #include <string>
 #include <vector>
-#include "expr/dtype_cons.h"
-#include "expr/dtype_selector.h"
-#include "expr/node.h"
-#include "expr/node_manager_attributes.h"
-#include "expr/type_node.h"
 
-namespace CVC4 {
+#include "expr/attribute.h"
+#include "expr/node.h"
+#include "expr/type_node.h"
+#include "util/cardinality.h"
+
+namespace cvc5 {
 
 // ----------------------- datatype attributes
 /**
@@ -48,37 +49,9 @@ struct DTypeConsIndexTag
 {
 };
 typedef expr::Attribute<DTypeConsIndexTag, size_t> DTypeConsIndexAttr;
-/** Attribute true for datatype types that are finite. */
-struct DTypeFiniteTag
-{
-};
-typedef expr::Attribute<DTypeFiniteTag, bool> DTypeFiniteAttr;
-/** Attribute true when we have computed whether a datatype type is finite */
-struct DTypeFiniteComputedTag
-{
-};
-typedef expr::Attribute<DTypeFiniteComputedTag, bool> DTypeFiniteComputedAttr;
-/**
- * Attribute true for datatype types that are interpreted as finite (see
- * TypeNode::isInterpretedFinite).
- */
-struct DTypeUFiniteTag
-{
-};
-typedef expr::Attribute<DTypeUFiniteTag, bool> DTypeUFiniteAttr;
-/**
- * Attribute true when we have computed whether a datatype type is interpreted
- * as finite.
- */
-struct DTypeUFiniteComputedTag
-{
-};
-typedef expr::Attribute<DTypeUFiniteComputedTag, bool> DTypeUFiniteComputedAttr;
 // ----------------------- end datatype attributes
 
-class NodeManager;
-
-class Datatype;
+class DTypeConstructor;
 
 /**
  * The Node-level representation of an inductive datatype, which currently
@@ -119,7 +92,7 @@ class Datatype;
  * allow the datatype to construct the necessary testers and selectors.
  *
  * An additional point to make is that we want to ease the burden on
- * both the parser AND the users of the CVC4 API, so this class takes
+ * both the parser AND the users of the cvc5 API, so this class takes
  * on the task of generating its own selectors and testers, for
  * instance.  That means that, after reifying the DType with the
  * NodeManager, the parser needs to go through the (now-resolved)
@@ -142,7 +115,6 @@ class Datatype;
  */
 class DType
 {
-  friend class Datatype;
   friend class DTypeConstructor;
   friend class NodeManager;  // for access to resolve()
 
@@ -191,6 +163,31 @@ class DType
    * be unique; they are for convenience and pretty-printing only.
    */
   void addConstructor(std::shared_ptr<DTypeConstructor> c);
+  /** add sygus constructor
+   *
+   * This adds a sygus constructor to this datatype, where
+   * this datatype should be currently unresolved. Note this method is
+   * syntactic sugar for adding a normal constructor and setting it to be a
+   * sygus constructor, and following a naming convention that avoids
+   * constructors with the same name.
+   *
+   * @param op : the builtin operator, constant, or variable that this
+   * constructor encodes
+   * @param cname the name of the constructor (for printing only)
+   * @param cargs the arguments of the constructor.
+   * It should be the case that cargs are sygus datatypes that
+   * encode the arguments of op. For example, a sygus constructor
+   * with op = PLUS should be such that cargs.size()>=2 and
+   * the sygus type of cargs[i] is Real/Int for each i.
+   * @param weight denotes the value added by the constructor when computing the
+   * size of datatype terms. Passing a value < 0 denotes the default weight for
+   * the constructor, which is 0 for nullary constructors and 1 for non-nullary
+   * constructors.
+   */
+  void addSygusConstructor(Node op,
+                           const std::string& cname,
+                           const std::vector<TypeNode>& cargs,
+                           int weight = -1);
 
   /** set sygus
    *
@@ -215,6 +212,9 @@ class DType
 
   /** set that this datatype is a tuple */
   void setTuple();
+
+  /** set that this datatype is a record */
+  void setRecord();
 
   /** Get the name of this DType. */
   std::string getName() const;
@@ -243,6 +243,9 @@ class DType
   /** is this a tuple datatype? */
   bool isTuple() const;
 
+  /** is this a record datatype? */
+  bool isRecord() const;
+
   /**
    * Return the cardinality of this datatype.
    * The DType must be resolved.
@@ -255,6 +258,17 @@ class DType
   Cardinality getCardinality() const;
 
   /**
+   * Return the cardinality class of the datatype. The
+   * DType must be resolved or an assertion is violated.
+   *
+   * The version of this method that takes type t is required
+   * for parametric datatypes, where t is an instantiated
+   * parametric datatype type whose datatype is this class.
+   */
+  CardinalityClass getCardinalityClass(TypeNode t) const;
+  CardinalityClass getCardinalityClass() const;
+
+  /**
    * Return true iff this DType has finite cardinality. If the
    * datatype is not well-founded, this method returns false. The
    * DType must be resolved or an assertion is violated.
@@ -262,23 +276,13 @@ class DType
    * The version of this method that takes type t is required
    * for parametric datatypes, where t is an instantiated
    * parametric datatype type whose datatype is this class.
-   */
-  bool isFinite(TypeNode t) const;
-  bool isFinite() const;
-
-  /**
-   * Return true iff this  DType is finite (all constructors are
-   * finite, i.e., there  are finitely  many ground terms) under the
-   * assumption that unintepreted sorts are finite. If the
-   * datatype is  not well-founded, this method returns false.  The
-   * DType must be resolved or an assertion is violated.
    *
-   * The versions of these methods that takes type t is required
-   * for parametric datatypes, where t is an instantiated
-   * parametric datatype type whose datatype is this class.
+   * @param t The (instantiated) datatype type we are computing finiteness for
+   * @param fmfEnabled Whether finite model finding is enabled
+   * @return true if finite model finding is enabled
    */
-  bool isInterpretedFinite(TypeNode t) const;
-  bool isInterpretedFinite() const;
+  bool isFinite(TypeNode t, bool fmfEnabled=false) const;
+  bool isFinite(bool fmfEnabled=false) const;
 
   /** is well-founded
    *
@@ -421,6 +425,12 @@ class DType
   const std::vector<std::shared_ptr<DTypeConstructor> >& getConstructors()
       const;
 
+  /**
+   * Return the subfield types of this datatype. This is the set of all types T
+   * for which there exists an argument to a constructor of type T.
+   */
+  std::unordered_set<TypeNode> getSubfieldTypes() const;
+
   /** prints this datatype to stream */
   void toStream(std::ostream& out) const;
 
@@ -540,10 +550,9 @@ class DType
    * @param isAlienPos Whether we are in an alien subfield type position. This
    * flag is true if we have traversed beneath a non-datatype type constructor.
    */
-  void getAlienSubfieldTypes(
-      std::unordered_set<TypeNode, TypeNodeHashFunction>& types,
-      std::map<TypeNode, bool>& processed,
-      bool isAlienPos) const;
+  void getAlienSubfieldTypes(std::unordered_set<TypeNode>& types,
+                             std::map<TypeNode, bool>& processed,
+                             bool isAlienPos) const;
   /** name of this datatype */
   std::string d_name;
   /** the type parameters of this datatype (if this is a parametric datatype)
@@ -553,6 +562,8 @@ class DType
   bool d_isCo;
   /** whether the datatype is a tuple */
   bool d_isTuple;
+  /** whether the datatype is a record */
+  bool d_isRecord;
   /** the constructors of this datatype */
   std::vector<std::shared_ptr<DTypeConstructor> > d_constructors;
   /** whether this datatype has been resolved */
@@ -611,6 +622,8 @@ class DType
   /** cache of shared selectors for this datatype */
   mutable std::map<TypeNode, std::map<TypeNode, std::map<unsigned, Node> > >
       d_sharedSel;
+  /**  A cache for getCardinalityClass. */
+  mutable std::map<TypeNode, CardinalityClass> d_cardClass;
 }; /* class DType */
 
 /**
@@ -668,6 +681,6 @@ struct DTypeIndexConstantHashFunction
 
 std::ostream& operator<<(std::ostream& os, const DType& dt);
 
-}  // namespace CVC4
+}  // namespace cvc5
 
 #endif

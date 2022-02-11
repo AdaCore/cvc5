@@ -1,7 +1,7 @@
-; COMMAND-LINE: --uf-ho --finite-model-find --no-check-models
+; COMMAND-LINE: --finite-model-find --decision=justification-old --uf-lazy-ll -q
 ; EXPECT: sat
 
-(set-logic ALL)
+(set-logic HO_ALL)
 (declare-sort $$unsorted 0)
 (declare-sort qML_mu 0)
 (declare-sort qML_i 0)

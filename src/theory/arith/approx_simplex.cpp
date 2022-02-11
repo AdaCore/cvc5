@@ -1,37 +1,44 @@
-/*********************                                                        */
-/*! \file approx_simplex.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Tim King, Mathias Preiner, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief [[ Add one-line brief description here ]]
- **
- ** [[ Add lengthier description here ]]
- ** \todo document this file
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Tim King, Aina Niemetz, Mathias Preiner
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * [[ Add one-line brief description here ]]
+ *
+ * [[ Add lengthier description here ]]
+ * \todo document this file
+ */
 #include "theory/arith/approx_simplex.h"
 
 #include <math.h>
+
 #include <cfloat>
 #include <cmath>
 #include <unordered_set>
 
+#include "base/cvc5config.h"
 #include "base/output.h"
-#include "cvc4autoconfig.h"
+#include "proof/eager_proof_generator.h"
 #include "smt/smt_statistics_registry.h"
 #include "theory/arith/constraint.h"
 #include "theory/arith/cut_log.h"
 #include "theory/arith/matrix.h"
 #include "theory/arith/normal_form.h"
 
+#ifdef CVC5_USE_GLPK
+#include "theory/arith/partial_model.h"
+#endif
+
 using namespace std;
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace arith {
 
@@ -148,29 +155,17 @@ struct CutScratchPad {
 };
 
 ApproximateStatistics::ApproximateStatistics()
-  :  d_branchMaxDepth("z::approx::branchMaxDepth",0)
-  ,  d_branchesMaxOnAVar("z::approx::branchesMaxOnAVar",0)
-  ,  d_gaussianElimConstructTime("z::approx::gaussianElimConstruct::time")
-  ,  d_gaussianElimConstruct("z::approx::gaussianElimConstruct::calls",0)
-  ,  d_averageGuesses("z::approx::averageGuesses")
+    : d_branchMaxDepth(
+        smtStatisticsRegistry().registerInt("z::approx::branchMaxDepth")),
+      d_branchesMaxOnAVar(
+          smtStatisticsRegistry().registerInt("z::approx::branchesMaxOnAVar")),
+      d_gaussianElimConstructTime(smtStatisticsRegistry().registerTimer(
+          "z::approx::gaussianElimConstruct::time")),
+      d_gaussianElimConstruct(smtStatisticsRegistry().registerInt(
+          "z::approx::gaussianElimConstruct::calls")),
+      d_averageGuesses(
+          smtStatisticsRegistry().registerAverage("z::approx::averageGuesses"))
 {
-  smtStatisticsRegistry()->registerStat(&d_branchMaxDepth);
-  smtStatisticsRegistry()->registerStat(&d_branchesMaxOnAVar);
-
-  smtStatisticsRegistry()->registerStat(&d_gaussianElimConstructTime);
-  smtStatisticsRegistry()->registerStat(&d_gaussianElimConstruct);
-
-  smtStatisticsRegistry()->registerStat(&d_averageGuesses);
-}
-
-ApproximateStatistics::~ApproximateStatistics(){
-  smtStatisticsRegistry()->unregisterStat(&d_branchMaxDepth);
-  smtStatisticsRegistry()->unregisterStat(&d_branchesMaxOnAVar);
-
-  smtStatisticsRegistry()->unregisterStat(&d_gaussianElimConstructTime);
-  smtStatisticsRegistry()->unregisterStat(&d_gaussianElimConstruct);
-
-  smtStatisticsRegistry()->unregisterStat(&d_averageGuesses);
 }
 
 Integer ApproximateSimplex::s_defaultMaxDenom(1<<26);
@@ -313,16 +308,17 @@ Rational ApproximateSimplex::estimateWithCFE(const Rational& r, const Integer& K
   }
 }
 
-Maybe<Rational> ApproximateSimplex::estimateWithCFE(double d, const Integer& D)
+std::optional<Rational> ApproximateSimplex::estimateWithCFE(double d,
+                                                            const Integer& D)
 {
-  if (Maybe<Rational> from_double = Rational::fromDouble(d))
+  if (std::optional<Rational> from_double = Rational::fromDouble(d))
   {
-    return estimateWithCFE(from_double.value(), D);
+    return estimateWithCFE(*from_double, D);
   }
-  return Maybe<Rational>();
+  return std::optional<Rational>();
 }
 
-Maybe<Rational> ApproximateSimplex::estimateWithCFE(double d)
+std::optional<Rational> ApproximateSimplex::estimateWithCFE(double d)
 {
   return estimateWithCFE(d, s_defaultMaxDenom);
 }
@@ -362,17 +358,17 @@ public:
   double sumInfeasibilities(bool mip) const override { return 0.0; }
 };
 
-}/* CVC4::theory::arith namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace arith
+}  // namespace theory
+}  // namespace cvc5
 
 /* Begin the declaration of GLPK specific code. */
-#ifdef CVC4_USE_GLPK
+#ifdef CVC5_USE_GLPK
 extern "C" {
 #include <glpk.h>
 }/* extern "C" */
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace arith {
 
@@ -409,8 +405,6 @@ private:
   bool d_solvedRelaxation;
   bool d_solvedMIP;
 
-  static int s_verbosity;
-
   CutScratchPad d_pad;
 
   std::vector<Integer> d_denomGuesses;
@@ -419,7 +413,7 @@ public:
   ApproxGLPK(const ArithVariables& v, TreeLog& l, ApproximateStatistics& s);
   ~ApproxGLPK();
 
-  LinResult solveRelaxation();
+  LinResult solveRelaxation() override;
   Solution extractRelaxation() const override { return extractSolution(false); }
 
   ArithRatPairVec heuristicOptCoeffs() const override;
@@ -428,7 +422,7 @@ public:
   Solution extractMIP() const override { return extractSolution(true); }
   void setOptCoeffs(const ArithRatPairVec& ref) override;
   std::vector<const CutInfo*> getValidCuts(const NodeLog& nodes) override;
-  ArithVar getBranchVar(const NodeLog& con) const;
+  ArithVar getBranchVar(const NodeLog& con) const override;
 
   static void printGLPKStatus(int status, std::ostream& out);
 
@@ -521,51 +515,49 @@ private:
   bool replaceSlacksOnCuts();
   bool loadVB(int nid, int M, int j, int ri, bool wantUb, VirtualBound& tmp);
 
-
-  double sumInfeasibilities(bool mip) const{
+  double sumInfeasibilities(bool mip) const override
+  {
     return sumInfeasibilities(mip? d_mipProb : d_realProb);
   }
   double sumInfeasibilities(glp_prob* prob, bool mip) const;
 };
 
-int ApproxGLPK::s_verbosity = 0;
-
-}/* CVC4::theory::arith namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
-#endif /*#ifdef CVC4_USE_GLPK */
+}  // namespace arith
+}  // namespace theory
+}  // namespace cvc5
+#endif /*#ifdef CVC5_USE_GLPK */
 /* End the declaration of GLPK specific code. */
 
 /* Begin GPLK/NOGLPK Glue code. */
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace arith {
 ApproximateSimplex* ApproximateSimplex::mkApproximateSimplexSolver(const ArithVariables& vars, TreeLog& l, ApproximateStatistics& s){
-#ifdef CVC4_USE_GLPK
+#ifdef CVC5_USE_GLPK
   return new ApproxGLPK(vars, l, s);
 #else
   return new ApproxNoOp(vars, l, s);
 #endif
 }
 bool ApproximateSimplex::enabled() {
-#ifdef CVC4_USE_GLPK
+#ifdef CVC5_USE_GLPK
   return true;
 #else
   return false;
 #endif
 }
-}/* CVC4::theory::arith namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace arith
+}  // namespace theory
+}  // namespace cvc5
 /* End GPLK/NOGLPK Glue code. */
 
-
 /* Begin GPLK implementation. */
-#ifdef CVC4_USE_GLPK
-namespace CVC4 {
+#ifdef CVC5_USE_GLPK
+namespace cvc5 {
 namespace theory {
 namespace arith {
 
+#ifdef CVC5_ASSERTIONS
 static CutInfoKlass fromGlpkClass(int klass){
   switch(klass){
   case GLP_RF_GMI: return GmiCutKlass;
@@ -575,14 +567,17 @@ static CutInfoKlass fromGlpkClass(int klass){
   default:         return UnknownKlass;
   }
 }
+#endif
 
-ApproxGLPK::ApproxGLPK(const ArithVariables& v, TreeLog& l, ApproximateStatistics& s)
-  : ApproximateSimplex(v, l, s)
-  , d_inputProb(NULL)
-  , d_realProb(NULL)
-  , d_mipProb(NULL)
-  , d_solvedRelaxation(false)
-  , d_solvedMIP(false)
+ApproxGLPK::ApproxGLPK(const ArithVariables& var,
+                       TreeLog& l,
+                       ApproximateStatistics& s)
+    : ApproximateSimplex(var, l, s),
+      d_inputProb(nullptr),
+      d_realProb(nullptr),
+      d_mipProb(nullptr),
+      d_solvedRelaxation(false),
+      d_solvedMIP(false)
 {
   static int instance = 0;
   ++instance;
@@ -630,11 +625,6 @@ ApproxGLPK::ApproxGLPK(const ArithVariables& v, TreeLog& l, ApproximateStatistic
   for(ArithVariables::var_iterator vi = d_vars.var_begin(), vi_end = d_vars.var_end(); vi != vi_end; ++vi){
     ArithVar v = *vi;
 
-    if(s_verbosity >= 2){
-      //Message() << v  << " ";
-      //d_vars.printModel(v, Message());
-    }
-
     int type;
     double lb = 0.0;
     double ub = 0.0;
@@ -673,7 +663,8 @@ ApproxGLPK::ApproxGLPK(const ArithVariables& v, TreeLog& l, ApproximateStatistic
   for(DenseMap<int>::const_iterator i = d_rowIndices.begin(), i_end = d_rowIndices.end(); i != i_end; ++i){
     ArithVar v = *i;
     Polynomial p = Polynomial::parsePolynomial(d_vars.asNode(v));
-    for(Polynomial::iterator i = p.begin(), end = p.end(); i != end; ++i){
+    for (Polynomial::iterator j = p.begin(), end = p.end(); j != end; ++j)
+    {
       ++numEntries;
     }
   }
@@ -689,9 +680,9 @@ ApproxGLPK::ApproxGLPK(const ArithVariables& v, TreeLog& l, ApproximateStatistic
 
     Polynomial p = Polynomial::parsePolynomial(d_vars.asNode(v));
 
-    for(Polynomial::iterator i = p.begin(), end = p.end(); i != end; ++i){
-
-      const Monomial& mono = *i;
+    for (Polynomial::iterator j = p.begin(), end = p.end(); j != end; ++j)
+    {
+      const Monomial& mono = *j;
       const Constant& constant = mono.getConstant();
       const VarList& variable = mono.getVarList();
 
@@ -762,11 +753,6 @@ ArithRatPairVec ApproxGLPK::heuristicOptCoeffs() const{
   uint32_t maxRowLength = 0;
   for(ArithVariables::var_iterator vi = d_vars.var_begin(), vi_end = d_vars.var_end(); vi != vi_end; ++vi){
     ArithVar v = *vi;
-
-    if(s_verbosity >= 2){
-      Message() << v  << " ";
-      d_vars.printModel(v, Message());
-    }
 
     int type;
     if(d_vars.hasUpperBound(v) && d_vars.hasLowerBound(v)){
@@ -858,17 +844,14 @@ ArithRatPairVec ApproxGLPK::heuristicOptCoeffs() const{
 
   double rowLengthReq = (maxRowLength * .9);
 
-  if(guessARowCandidate){
-    for(DenseMap<uint32_t>::const_iterator i = d_rowCandidates.begin(), iend =d_rowCandidates.end(); i != iend; ++i ){
-      ArithVar r = *i;
+  if (guessARowCandidate)
+  {
+    for (ArithVar r : d_rowCandidates)
+    {
       uint32_t len = d_rowCandidates[r];
 
       int dir = guessDir(r);
       if(len >= rowLengthReq){
-        if(s_verbosity >= 1){
-          Message() << "high row " << r << " " << len << " " << avgRowLength << " " << dir<< endl;
-          d_vars.printModel(r, Message());
-        }
         ret.push_back(ArithRatPair(r, Rational(dir)));
       }
     }
@@ -876,24 +859,20 @@ ArithRatPairVec ApproxGLPK::heuristicOptCoeffs() const{
 
   // Attempt columns
   bool guessAColCandidate = maxCount >= 4;
-  if(guessAColCandidate){
-    for(DenseMap<BoundCounts>::const_iterator i = d_colCandidates.begin(), iend = d_colCandidates.end(); i != iend; ++i ){
-      ArithVar c = *i;
+  if (guessAColCandidate)
+  {
+    for (ArithVar c : d_colCandidates)
+    {
       BoundCounts bc = d_colCandidates[c];
 
       int dir = guessDir(c);
       double ubScore = double(bc.upperBoundCount()) / maxCount;
       double lbScore = double(bc.lowerBoundCount()) / maxCount;
       if(ubScore  >= .9 || lbScore >= .9){
-        if(s_verbosity >= 1){
-          Message() << "high col " << c << " " << bc << " " << ubScore << " " << lbScore << " " << dir << endl;
-          d_vars.printModel(c, Message());
-        }
         ret.push_back(ArithRatPair(c, Rational(c)));
       }
     }
   }
-
 
   return ret;
 }
@@ -1009,22 +988,17 @@ ApproximateSimplex::Solution ApproxGLPK::extractSolution(bool mip) const
 
     int status = isAux ? glp_get_row_stat(prob, glpk_index)
       : glp_get_col_stat(prob, glpk_index);
-    if(s_verbosity >= 2){
-      Message() << "assignment " << vi << endl;
-    }
 
     bool useDefaultAssignment = false;
 
     switch(status){
     case GLP_BS:
-      //Message() << "basic" << endl;
       newBasis.add(vi);
       useDefaultAssignment = true;
       break;
     case GLP_NL:
     case GLP_NS:
       if(!mip){
-        if(s_verbosity >= 2){ Message() << "non-basic lb" << endl; }
         newValues.set(vi, d_vars.getLowerBound(vi));
       }else{// intentionally fall through otherwise
         useDefaultAssignment = true;
@@ -1032,7 +1006,6 @@ ApproximateSimplex::Solution ApproxGLPK::extractSolution(bool mip) const
       break;
     case GLP_NU:
       if(!mip){
-        if(s_verbosity >= 2){ Message() << "non-basic ub" << endl; }
         newValues.set(vi, d_vars.getUpperBound(vi));
       }else {// intentionally fall through otherwise
         useDefaultAssignment = true;
@@ -1046,7 +1019,6 @@ ApproximateSimplex::Solution ApproxGLPK::extractSolution(bool mip) const
     }
 
     if(useDefaultAssignment){
-      if(s_verbosity >= 2){ Message() << "non-basic other" << endl; }
 
       double newAssign;
       if(mip){
@@ -1058,30 +1030,32 @@ ApproximateSimplex::Solution ApproxGLPK::extractSolution(bool mip) const
       }
       const DeltaRational& oldAssign = d_vars.getAssignment(vi);
 
-
-      if(d_vars.hasLowerBound(vi) &&
-         roughlyEqual(newAssign, d_vars.getLowerBound(vi).approx(SMALL_FIXED_DELTA))){
-        //Message() << "  to lb" << endl;
+      if (d_vars.hasLowerBound(vi)
+          && roughlyEqual(newAssign,
+                          d_vars.getLowerBound(vi).approx(SMALL_FIXED_DELTA)))
+      {
 
         newValues.set(vi, d_vars.getLowerBound(vi));
-      }else if(d_vars.hasUpperBound(vi) &&
-               roughlyEqual(newAssign, d_vars.getUpperBound(vi).approx(SMALL_FIXED_DELTA))){
+      }
+      else if (d_vars.hasUpperBound(vi)
+               && roughlyEqual(
+                   newAssign,
+                   d_vars.getUpperBound(vi).approx(SMALL_FIXED_DELTA)))
+      {
         newValues.set(vi, d_vars.getUpperBound(vi));
-        // Message() << "  to ub" << endl;
-      }else{
-
+      }
+      else
+      {
         double rounded = round(newAssign);
-        if(roughlyEqual(newAssign, rounded)){
-          // Message() << "roughly equal " << rounded << " " << newAssign << " " << oldAssign << endl;
+        if (roughlyEqual(newAssign, rounded))
+        {
           newAssign = rounded;
-        }else{
-          // Message() << "not roughly equal " << rounded << " " << newAssign << " " << oldAssign << endl;
         }
 
         DeltaRational proposal;
-        if (Maybe<Rational> maybe_new = estimateWithCFE(newAssign))
+        if (std::optional maybe_new = estimateWithCFE(newAssign))
         {
-          proposal = maybe_new.value();
+          proposal = *maybe_new;
         }
         else
         {
@@ -1089,20 +1063,18 @@ ApproximateSimplex::Solution ApproxGLPK::extractSolution(bool mip) const
           proposal = d_vars.getAssignment(vi);
         }
 
-        if(roughlyEqual(newAssign, oldAssign.approx(SMALL_FIXED_DELTA))){
-          // Message() << "  to prev value" << newAssign << " " << oldAssign << endl;
+        if (roughlyEqual(newAssign, oldAssign.approx(SMALL_FIXED_DELTA)))
+        {
           proposal = d_vars.getAssignment(vi);
         }
 
-
-        if(d_vars.strictlyLessThanLowerBound(vi, proposal)){
-          //Message() << "  round to lb " << d_vars.getLowerBound(vi) << endl;
+        if (d_vars.strictlyLessThanLowerBound(vi, proposal))
+        {
           proposal = d_vars.getLowerBound(vi);
-        }else if(d_vars.strictlyGreaterThanUpperBound(vi, proposal)){
-          //Message() << "  round to ub " << d_vars.getUpperBound(vi) << endl;
+        }
+        else if (d_vars.strictlyGreaterThanUpperBound(vi, proposal))
+        {
           proposal = d_vars.getUpperBound(vi);
-        }else{
-          //Message() << "  use proposal" << proposal << " " << oldAssign  << endl;
         }
         newValues.set(vi, proposal);
       }
@@ -1165,9 +1137,6 @@ LinResult ApproxGLPK::solveRelaxation(){
   parm.pricing = GLP_PT_PSE;
   parm.it_lim = d_pivotLimit;
   parm.msg_lev = GLP_MSG_OFF;
-  if(s_verbosity >= 1){
-    parm.msg_lev = GLP_MSG_ALL;
-  }
 
   glp_erase_prob(d_realProb);
   glp_copy_prob(d_realProb, d_inputProb, GLP_OFF);
@@ -1384,7 +1353,7 @@ static GmiInfo* gmiCut(glp_tree *tree, int exec_ord, int cut_ord){
   int M = gmi->getMAtCreation();
 
   // Get the tableau row
-  int nrows CVC4_UNUSED = glp_ios_cut_get_aux_nrows(tree, gmi->poolOrdinal());
+  int nrows CVC5_UNUSED = glp_ios_cut_get_aux_nrows(tree, gmi->poolOrdinal());
   Assert(nrows == 1);
   int rows[1+1];
   glp_ios_cut_get_aux_rows(tree, gmi->poolOrdinal(), rows, NULL);
@@ -1698,9 +1667,6 @@ MipResult ApproxGLPK::solveMIP(bool activelyLog){
   parm.cb_func = glpkCallback;
   parm.cb_info = &aux;
   parm.msg_lev = GLP_MSG_OFF;
-  if(s_verbosity >= 1){
-    parm.msg_lev = GLP_MSG_ALL;
-  }
 
   glp_erase_prob(d_mipProb);
   glp_copy_prob(d_mipProb, d_realProb, GLP_OFF);
@@ -1736,23 +1702,6 @@ MipResult ApproxGLPK::solveMIP(bool activelyLog){
     return MipUnknown;
   }
 }
-
-// Node explainSet(const set<ConstraintP>& inp){
-//   Assert(!inp.empty());
-//   NodeBuilder<> nb(kind::AND);
-//   set<ConstraintP>::const_iterator iter, end;
-//   for(iter = inp.begin(), end = inp.end(); iter != end; ++iter){
-//     const ConstraintP c = *iter;
-//     Assert(c != NullConstraint);
-//     c->explainForConflict(nb);
-//   }
-//   Node ret = safeConstructNary(nb);
-//   Node rew = Rewriter::rewrite(ret);
-//   if(rew.getNumChildren() < ret.getNumChildren()){
-//     //Debug("approx::") << "explainSet " << ret << " " << rew << endl;
-//   }
-//   return rew;
-// }
 
 DeltaRational sumConstraints(const DenseMap<Rational>& xs, const DenseMap<ConstraintP>& cs, bool* anyinf){
   if(anyinf != NULL){
@@ -2019,13 +1968,13 @@ bool ApproxGLPK::attemptBranchCut(int nid, const BranchCutInfo& br_cut){
   d_pad.d_cut.lhs.set(x, Rational(1));
 
   Rational& rhs = d_pad.d_cut.rhs;
-  Maybe<Rational> br_cut_rhs = Rational::fromDouble(br_cut.getRhs());
+  std::optional<Rational> br_cut_rhs = Rational::fromDouble(br_cut.getRhs());
   if (!br_cut_rhs)
   {
     return true;
   }
 
-  rhs = estimateWithCFE(br_cut_rhs.value(), Integer(1));
+  rhs = estimateWithCFE(*br_cut_rhs, Integer(1));
   d_pad.d_failure = !rhs.isIntegral();
   if(d_pad.d_failure) { return true; }
 
@@ -2076,13 +2025,13 @@ bool ApproxGLPK::applyCMIRRule(int nid, const MirInfo& mir){
   DenseMap<Rational>& alpha = d_pad.d_alpha.lhs;
   Rational& b = d_pad.d_alpha.rhs;
 
-  Maybe<Rational> delta = estimateWithCFE(mir.delta);
+  std::optional<Rational> delta = estimateWithCFE(mir.delta);
   if (!delta)
   {
     return true;
   }
 
-  d_pad.d_failure = (delta.value().sgn() <= 0);
+  d_pad.d_failure = (delta->sgn() <= 0);
   if(d_pad.d_failure){ return true; }
 
   Debug("approx::mir") << "applyCMIRRule() " << delta << " " << mir.delta << endl;
@@ -2092,7 +2041,7 @@ bool ApproxGLPK::applyCMIRRule(int nid, const MirInfo& mir){
   for(; iter != iend; ++iter){
     ArithVar v = *iter;
     const Rational& curr = alpha[v];
-    Rational next = curr / delta.value();
+    Rational next = curr / *delta;
     if(compRanges.isKey(v)){
       b -= curr * compRanges[v];
       alpha.set(v, - next);
@@ -2100,7 +2049,7 @@ bool ApproxGLPK::applyCMIRRule(int nid, const MirInfo& mir){
       alpha.set(v, next);
     }
   }
-  b = b / delta.value();
+  b = b / *delta;
 
   Rational roundB = (b + Rational(1,2)).floor();
   d_pad.d_failure = (b - roundB).abs() < Rational(1,90);
@@ -2518,7 +2467,7 @@ bool ApproxGLPK::loadRowSumIntoAgg(int nid, int M, const PrimitiveVec& row_sum){
     double coeff = row_sum.coeffs[i];
     ArithVar x = _getArithVar(nid, M, aux_ind);
     if(x == ARITHVAR_SENTINEL){ return true; }
-    Maybe<Rational> c = estimateWithCFE(coeff);
+    std::optional<Rational> c = estimateWithCFE(coeff);
     if (!c)
     {
       return true;
@@ -2526,11 +2475,11 @@ bool ApproxGLPK::loadRowSumIntoAgg(int nid, int M, const PrimitiveVec& row_sum){
 
     if (lhs.isKey(x))
     {
-      lhs.get(x) -= c.value();
+      lhs.get(x) -= *c;
     }
     else
     {
-      lhs.set(x, -c.value());
+      lhs.set(x, -(*c));
     }
   }
 
@@ -2550,13 +2499,13 @@ bool ApproxGLPK::loadRowSumIntoAgg(int nid, int M, const PrimitiveVec& row_sum){
     double coeff = row_sum.coeffs[i];
     ArithVar x = _getArithVar(nid, M, aux_ind);
     Assert(x != ARITHVAR_SENTINEL);
-    Maybe<Rational> c = estimateWithCFE(coeff);
+    std::optional<Rational> c = estimateWithCFE(coeff);
     if (!c)
     {
       return true;
     }
     Assert(!lhs.isKey(x));
-    lhs.set(x, c.value());
+    lhs.set(x, *c);
   }
 
   if(Debug.isOn("approx::mir")){
@@ -2788,10 +2737,9 @@ bool ApproxGLPK::gaussianElimConstructTableRow(int nid, int M, const PrimitiveVe
   Matrix<Rational> A;
   A.increaseSizeTo(d_vars.getNumberOfVariables());
   std::vector< std::pair<RowIndex, ArithVar> > rows;
-  set<ArithVar>::const_iterator i, iend;
   // load the rows for auxiliary variables into A
-  for(i=onrow.begin(), iend=onrow.end(); i!=iend; ++i){
-    ArithVar v = *i;
+  for (ArithVar v : onrow)
+  {
     if(d_vars.isAuxiliary(v)){
       Assert(d_vars.hasNode(v));
 
@@ -2955,7 +2903,7 @@ bool ApproxGLPK::guessCoefficientsConstructTableRow(int nid, int M, const Primit
   for(size_t i=0; i < d_denomGuesses.size(); ++i){
     const Integer& D = d_denomGuesses[i];
     if(!guessCoefficientsConstructTableRow(nid, M, vec, D)){
-      d_stats.d_averageGuesses.addEntry(i+1);
+      d_stats.d_averageGuesses << i+1;
       Debug("approx::gmi") << "guesseditat " << i << " D=" << D << endl;
       return false;
     }
@@ -2988,12 +2936,12 @@ bool ApproxGLPK::guessCoefficientsConstructTableRow(int nid, int M, const Primit
     }
     Debug("guessCoefficientsConstructTableRow") << "match " << ind << "," << var << "("<<d_vars.asNode(var)<<")"<<endl;
 
-    Maybe<Rational> cfe = estimateWithCFE(coeff, D);
+    std::optional<Rational> cfe = estimateWithCFE(coeff, D);
     if (!cfe)
     {
       return true;
     }
-    tab.set(var, cfe.value());
+    tab.set(var, *cfe);
     Debug("guessCoefficientsConstructTableRow") << var << " cfe " << cfe << endl;
   }
   if(!guessIsConstructable(tab)){
@@ -3129,9 +3077,8 @@ void ApproxGLPK::tryCut(int nid, CutInfo& cut)
   }
 }
 
-
-}/* CVC4::theory::arith namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
-#endif /*#ifdef CVC4_USE_GLPK */
+}  // namespace arith
+}  // namespace theory
+}  // namespace cvc5
+#endif /*#ifdef CVC5_USE_GLPK */
 /* End GPLK implementation. */

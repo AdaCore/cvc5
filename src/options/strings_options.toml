@@ -1,6 +1,5 @@
 id     = "STRINGS"
-name   = "Strings theory"
-header = "options/strings_options.h"
+name   = "Strings Theory"
 
 [[option]]
   name       = "stringExp"
@@ -9,15 +8,6 @@ header = "options/strings_options.h"
   type       = "bool"
   default    = "false"
   help       = "experimental features in the theory of strings"
-
-[[option]]
-  name       = "stdPrintASCII"
-  category   = "regular"
-  long       = "strings-print-ascii"
-  type       = "bool"
-  default    = "false"
-  read_only  = true
-  help       = "the alphabet contains only printable characters from the standard extended ASCII"
 
 [[option]]
   name       = "stringFMF"
@@ -33,17 +23,7 @@ header = "options/strings_options.h"
   long       = "strings-eager"
   type       = "bool"
   default    = "false"
-  read_only  = true
   help       = "strings eager check"
-
-[[option]]
-  name       = "stringIgnNegMembership"
-  category   = "regular"
-  long       = "strings-inm"
-  type       = "bool"
-  default    = "false"
-  read_only  = true
-  help       = "internal for strings: ignore negative membership constraints (fragment checking is needed, left to users for now)"
 
 [[option]]
   name       = "stringLazyPreproc"
@@ -51,7 +31,6 @@ header = "options/strings_options.h"
   long       = "strings-lazy-pp"
   type       = "bool"
   default    = "true"
-  read_only  = true
   help       = "perform string preprocessing lazily"
 
 [[option]]
@@ -60,7 +39,6 @@ header = "options/strings_options.h"
   long       = "strings-len-norm"
   type       = "bool"
   default    = "true"
-  read_only  = true
   help       = "strings length normalization lemma"
 
 [[option]]
@@ -69,7 +47,6 @@ header = "options/strings_options.h"
   long       = "strings-infer-sym"
   type       = "bool"
   default    = "true"
-  read_only  = true
   help       = "strings split on empty string"
 
 [[option]]
@@ -78,7 +55,6 @@ header = "options/strings_options.h"
   long       = "strings-eager-len"
   type       = "bool"
   default    = "true"
-  read_only  = true
   help       = "strings eager length lemmas"
 
 [[option]]
@@ -87,7 +63,6 @@ header = "options/strings_options.h"
   long       = "strings-check-entail-len"
   type       = "bool"
   default    = "true"
-  read_only  = true
   help       = "check entailment between length terms to reduce splitting"
 
 [[option]]
@@ -121,7 +96,6 @@ header = "options/strings_options.h"
   long       = "strings-infer-as-lemmas"
   type       = "bool"
   default    = "false"
-  read_only  = true
   help       = "always send lemmas out instead of making internal inferences"
 
 [[option]]
@@ -130,7 +104,6 @@ header = "options/strings_options.h"
   long       = "strings-rexplain-lemmas"
   type       = "bool"
   default    = "true"
-  read_only  = true
   help       = "regression explanations for string lemmas"
 
 [[option]]
@@ -139,26 +112,15 @@ header = "options/strings_options.h"
   long       = "strings-min-prefix-explain"
   type       = "bool"
   default    = "true"
-  read_only  = true
   help       = "minimize explanations for prefix of normal forms in strings"
 
 [[option]]
-  name       = "stringGuessModel"
+  name       = "stringModelBasedReduction"
   category   = "regular"
-  long       = "strings-guess-model"
+  long       = "strings-mbr"
   type       = "bool"
-  default    = "false"
-  read_only  = true
-  help       = "use model guessing to avoid string extended function reductions"
-
-[[option]]
-  name       = "stringLenPropCsp"
-  category   = "regular"
-  long       = "strings-lprop-csp"
-  type       = "bool"
-  default    = "false"
-  read_only  = true
-  help       = "do length propagation based on constant splits"
+  default    = "true"
+  help       = "use models to avoid reductions for extended functions that introduce quantified formulas"
 
 [[option]]
   name       = "regExpElim"
@@ -182,7 +144,6 @@ header = "options/strings_options.h"
   long       = "strings-ff"
   type       = "bool"
   default    = "true"
-  read_only  = true
   help       = "do flat form inferences"
 
 [[option]]
@@ -205,3 +166,78 @@ header = "options/strings_options.h"
 [[option.mode.NONE]]
   name = "none"
   help = "Do not compute intersections for regular expressions."
+
+[[option]]
+  name       = "stringUnifiedVSpt"
+  category   = "regular"
+  long       = "strings-unified-vspt"
+  type       = "bool"
+  default    = "true"
+  help       = "use a single skolem for the variable splitting rule"
+
+[[option]]
+  name       = "stringEagerEval"
+  category   = "regular"
+  long       = "strings-eager-eval"
+  type       = "bool"
+  default    = "true"
+  help       = "perform eager context-dependent evaluation for applications of string kinds"
+
+[[option]]
+  name       = "stringsAlphaCard"
+  category   = "regular"
+  long       = "strings-alpha-card=N"
+  type       = "uint64_t"
+  default    = "196608"
+  maximum    = "196608"
+  help       = "the assumed cardinality of the alphabet of characters for strings, which is a prefix of the interval of unicode code points in the SMT-LIB standard"
+  
+[[option]]
+  name       = "stringsDeqExt"
+  category   = "regular"
+  long       = "strings-deq-ext"
+  type       = "bool"
+  default    = "false"
+  help       = "use extensionality for string disequalities"
+
+[[option]]
+  name       = "stringsEagerLenEntRegexp"
+  category   = "regular"
+  long       = "strings-eager-len-re"
+  type       = "bool"
+  default    = "false"
+  help       = "use regular expressions for eager length conflicts"
+
+[[option]]
+  name       = "stringEagerSolver"
+  category   = "regular"
+  long       = "strings-eager-solver"
+  type       = "bool"
+  default    = "true"
+  help       = "use the eager solver"
+
+[[option]]
+  name       = "stringRegexpInclusion"
+  category   = "regular"
+  long       = "strings-regexp-inclusion"
+  type       = "bool"
+  default    = "true"
+  help       = "use regular expression inclusion"
+
+[[option]]
+  name       = "seqArray"
+  category   = "expert"
+  long       = "seq-array=MODE"
+  type       = "SeqArrayMode"
+  default    = "NONE"
+  help       = "use array-inspired solver for sequence updates in eager or lazy mode"
+  help_mode  = "use array-inspired solver for sequence updates in eager or lazy mode"
+[[option.mode.LAZY]]
+  name = "lazy"
+  help = "use array-inspired solver for sequence updates in lazy mode"
+[[option.mode.EAGER]]
+  name = "eager"
+  help = "use array-inspired solver for sequence updates in eager mode"
+[[option.mode.NONE]]
+  name = "none"
+  help = "do not use array-inspired solver for sequence updates"

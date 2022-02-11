@@ -1,5 +1,5 @@
 ; EXPECT: sat
-(set-logic QF_ALL_SUPPORTED)
+(set-logic QF_ALL)
 (set-info :status sat)
 
 ; Observed behavior
@@ -22,12 +22,12 @@
 (declare-fun T () mySet)
 
 (assert (= (f x) 
-           (union S T)))
+           (set.union S T)))
 
 (assert (= (f x) 
-           (union T (f y))))
+           (set.union T (f y))))
 
 (assert (not (= (f y) 
-                (union T (f y)))))
+                (set.union T (f y)))))
 
 (check-sat)

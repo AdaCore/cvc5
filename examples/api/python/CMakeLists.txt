@@ -1,8 +1,41 @@
+###############################################################################
+# Top contributors (to current version):
+#   Andres Noetzli
+#
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+#
+# The build system configuration.
+##
+
 set(EXAMPLES_API_PYTHON
+  bitvectors_and_arrays
+  bitvectors
+  combination
+  datatypes
   exceptions
+  extract
+  floating_point
+  helloworld
+  id
+  linear_arith
+  quickstart
+  relations
+  sequences
+  sets
+  strings
+  sygus-fun
+  sygus-grammar
+  sygus-inv
+  transcendentals
 )
 
-find_package(PythonInterp REQUIRED)
+find_package(PythonInterp ${CVC5_BINDINGS_PYTHON_VERSION} REQUIRED)
 
 # Find Python bindings in the corresponding python-*/site-packages directory.
 # Lookup Python module directory and store path in PYTHON_MODULE_PATH.
@@ -23,5 +56,5 @@ foreach(example ${EXAMPLES_API_PYTHON})
   )
   set_tests_properties(${example_test} PROPERTIES
     LABELS "example"
-    ENVIRONMENT PYTHONPATH=${PYTHON_MODULE_PATH})
+    ENVIRONMENT PYTHONPATH=${PYTHON_MODULE_PATH}:${CMAKE_SOURCE_DIR}/api/python)
 endforeach()

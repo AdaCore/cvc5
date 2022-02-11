@@ -1,38 +1,38 @@
-/*********************                                                        */
-/*! \file theory_datatypes_utils.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Morgan Deters, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of rewriter for the theory of (co)inductive datatypes.
- **
- ** Implementation of rewriter for the theory of (co)inductive datatypes.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Aina Niemetz, Morgan Deters
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of rewriter for the theory of (co)inductive datatypes.
+ */
 
 #include "theory/datatypes/theory_datatypes_utils.h"
 
+#include "expr/ascription_type.h"
 #include "expr/dtype.h"
+#include "expr/dtype_cons.h"
 
-using namespace CVC4;
-using namespace CVC4::kind;
+using namespace cvc5;
+using namespace cvc5::kind;
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace datatypes {
 namespace utils {
 
 /** get instantiate cons */
-Node getInstCons(Node n, const DType& dt, int index)
+Node getInstCons(Node n, const DType& dt, size_t index)
 {
-  Assert(index >= 0 && index < (int)dt.getNumConstructors());
+  Assert(index < dt.getNumConstructors());
   std::vector<Node> children;
   NodeManager* nm = NodeManager::currentNM();
-  children.push_back(dt[index].getConstructor());
   TypeNode tn = n.getType();
   for (unsigned i = 0, nargs = dt[index].getNumArgs(); i < nargs; i++)
   {
@@ -40,30 +40,32 @@ Node getInstCons(Node n, const DType& dt, int index)
         APPLY_SELECTOR_TOTAL, dt[index].getSelectorInternal(tn, i), n);
     children.push_back(nc);
   }
-  Node n_ic = nm->mkNode(APPLY_CONSTRUCTOR, children);
+  Node n_ic = mkApplyCons(tn, dt, index, children);
+  Assert(n_ic.getType() == tn);
+  Assert(static_cast<size_t>(isInstCons(n, n_ic, dt)) == index);
+  return n_ic;
+}
+
+Node mkApplyCons(TypeNode tn,
+                 const DType& dt,
+                 size_t index,
+                 const std::vector<Node>& children)
+{
+  Assert(tn.isDatatype());
+  Assert(index < dt.getNumConstructors());
+  Assert(dt[index].getNumArgs() == children.size());
+  NodeManager* nm = NodeManager::currentNM();
+  std::vector<Node> cchildren;
+  cchildren.push_back(dt[index].getConstructor());
+  cchildren.insert(cchildren.end(), children.begin(), children.end());
   if (dt.isParametric())
   {
     // add type ascription for ambiguous constructor types
-    if (!n_ic.getType().isComparableTo(tn))
-    {
-      Debug("datatypes-parametric")
-          << "DtInstantiate: ambiguous type for " << n_ic << ", ascribe to "
-          << n.getType() << std::endl;
-      Debug("datatypes-parametric")
-          << "Constructor is " << dt[index] << std::endl;
-      TypeNode tspec = dt[index].getSpecializedConstructorType(n.getType());
-      Debug("datatypes-parametric")
-          << "Type specification is " << tspec << std::endl;
-      children[0] = nm->mkNode(APPLY_TYPE_ASCRIPTION,
-                               nm->mkConst(AscriptionType(tspec.toType())),
-                               children[0]);
-      n_ic = nm->mkNode(APPLY_CONSTRUCTOR, children);
-      Assert(n_ic.getType() == tn);
-    }
+    Debug("datatypes-parametric")
+        << "Constructor is " << dt[index] << std::endl;
+    cchildren[0] = dt[index].getInstantiatedConstructor(tn);
   }
-  Assert(isInstCons(n, n_ic, dt) == index);
-  // n_ic = Rewriter::rewrite( n_ic );
-  return n_ic;
+  return nm->mkNode(APPLY_CONSTRUCTOR, cchildren);
 }
 
 int isInstCons(Node t, Node n, const DType& dt)
@@ -116,7 +118,8 @@ const DType& datatypeOf(Node n)
   {
     case CONSTRUCTOR_TYPE: return t[t.getNumChildren() - 1].getDType();
     case SELECTOR_TYPE:
-    case TESTER_TYPE: return t[0].getDType();
+    case TESTER_TYPE:
+    case UPDATER_TYPE: return t[0].getDType();
     default:
       Unhandled() << "arg must be a datatype constructor, selector, or tester";
   }
@@ -206,4 +209,4 @@ bool checkClash(Node n1, Node n2, std::vector<Node>& rew)
 }  // namespace utils
 }  // namespace datatypes
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5

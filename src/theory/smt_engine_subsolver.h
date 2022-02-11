@@ -1,79 +1,65 @@
-/*********************                                                        */
-/*! \file smt_engine_subsolver.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Haniel Barbosa
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Utilities for initializing subsolvers (copies of SmtEngine) during
- ** solving.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Utilities for initializing subsolvers (copies of SolverEngine) during
+ * solving.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__SMT_ENGINE_SUBSOLVER_H
-#define CVC4__THEORY__SMT_ENGINE_SUBSOLVER_H
+#ifndef CVC5__THEORY__SMT_ENGINE_SUBSOLVER_H
+#define CVC5__THEORY__SMT_ENGINE_SUBSOLVER_H
 
-#include <map>
 #include <memory>
 #include <vector>
 
-#include "expr/expr_manager.h"
 #include "expr/node.h"
-#include "expr/variable_type_map.h"
-#include "smt/smt_engine.h"
+#include "smt/solver_engine.h"
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 
 /**
- * This function initializes the smt engine smte as a subsolver, e.g. it
- * creates a new SMT engine and sets the options of the current SMT engine.
- */
-void initializeSubsolver(std::unique_ptr<SmtEngine>& smte);
-
-/**
- * Initialize Smt subsolver with exporting
- *
  * This function initializes the smt engine smte to check the satisfiability
- * of the argument "query".
+ * of the argument "query". It takes the logic and options of the current
+ * SMT engine in scope.
  *
- * The arguments em and varMap are used for supporting cases where we
- * want smte to use a different expression manager instead of the current
- * expression manager. The motivation for this so that different options can
- * be set for the subcall.
+ * Notice this method intentionally does not fully initialize smte. This means
+ * that the options of smte can still be modified after it is returned by
+ * this method.
  *
- * Notice that subsequent expressions extracted from smte (for instance, model
- * values) must be exported to the current expression
- * manager.
+ * Notice that some aspects of subsolvers are not incoporated by this call.
+ * For example, the type of separation logic heaps is not set on smte, even
+ * if the current SMT engine has declared a separation logic heap.
  *
  * @param smte The smt engine pointer to initialize
- * @param em Reference to the expression manager to use
- * @param varMap Map used for exporting expressions
- * @param query The query to check
+ * @param opts The options for the subsolver.
+ * @param logicInfo The logic info to set on the subsolver
  * @param needsTimeout Whether we would like to set a timeout
  * @param timeout The timeout (in milliseconds)
  */
-void initializeSubsolverWithExport(std::unique_ptr<SmtEngine>& smte,
-                                   ExprManager& em,
-                                   ExprManagerMapCollection& varMap,
-                                   Node query,
-                                   bool needsTimeout = false,
-                                   unsigned long timeout = 0);
+void initializeSubsolver(std::unique_ptr<SolverEngine>& smte,
+                         const Options& opts,
+                         const LogicInfo& logicInfo,
+                         bool needsTimeout = false,
+                         unsigned long timeout = 0);
 
 /**
- * This function initializes the smt engine smte to check the satisfiability
- * of the argument "query", without exporting expressions.
- *
- * Notice that is not possible to set a timeout value currently without
- * exporting since the Options and ExprManager are tied together.
- * TODO: eliminate this dependency (cvc4-projects #120).
+ * Version that uses the options and logicInfo in an environment.
  */
-void initializeSubsolver(std::unique_ptr<SmtEngine>& smte, Node query);
+void initializeSubsolver(std::unique_ptr<SolverEngine>& smte,
+                         const Env& env,
+                         bool needsTimeout = false,
+                         unsigned long timeout = 0);
 
 /**
  * This returns the result of checking the satisfiability of formula query.
@@ -81,7 +67,12 @@ void initializeSubsolver(std::unique_ptr<SmtEngine>& smte, Node query);
  * If necessary, smte is initialized to the SMT engine that checked its
  * satisfiability.
  */
-Result checkWithSubsolver(std::unique_ptr<SmtEngine>& smte, Node query);
+Result checkWithSubsolver(std::unique_ptr<SolverEngine>& smte,
+                          Node query,
+                          const Options& opts,
+                          const LogicInfo& logicInfo,
+                          bool needsTimeout = false,
+                          unsigned long timeout = 0);
 
 /**
  * This returns the result of checking the satisfiability of formula query.
@@ -90,10 +81,14 @@ Result checkWithSubsolver(std::unique_ptr<SmtEngine>& smte, Node query);
  * concerned with the state of the SMT engine after the check.
  *
  * @param query The query to check
+ * @param opts The options for the subsolver
+ * @param logicInfo The logic info to set on the subsolver
  * @param needsTimeout Whether we would like to set a timeout
  * @param timeout The timeout (in milliseconds)
  */
 Result checkWithSubsolver(Node query,
+                          const Options& opts,
+                          const LogicInfo& logicInfo,
                           bool needsTimeout = false,
                           unsigned long timeout = 0);
 
@@ -105,16 +100,45 @@ Result checkWithSubsolver(Node query,
  * @param query The query to check
  * @param vars The variables we are interesting in getting a model for.
  * @param modelVals A vector storing the model values of variables in vars.
+ * @param opts The options for the subsolver
+ * @param logicInfo The logic info to set on the subsolver
  * @param needsTimeout Whether we would like to set a timeout
  * @param timeout The timeout (in milliseconds)
  */
 Result checkWithSubsolver(Node query,
                           const std::vector<Node>& vars,
                           std::vector<Node>& modelVals,
+                          const Options& opts,
+                          const LogicInfo& logicInfo,
                           bool needsTimeout = false,
                           unsigned long timeout = 0);
 
-}  // namespace theory
-}  // namespace CVC4
+//--------------- utilities
 
-#endif /* CVC4__THEORY__SMT_ENGINE_SUBSOLVER_H */
+/**
+ * Assuming smt has just been called to check-sat and returned "SAT", this
+ * method adds the model for d_vars to mvs.
+ */
+void getModelFromSubsolver(SolverEngine& smt,
+                           const std::vector<Node>& vars,
+                           std::vector<Node>& mvs);
+
+/**
+ * Assuming smt has just been called to check-sat and returned "UNSAT", this
+ * method get the unsat core and adds it to uasserts.
+ *
+ * The assertions in the argument queryAsserts (which we are not interested
+ * in tracking in the unsat core) are excluded from uasserts.
+ * If one of the formulas in queryAsserts was in the unsat core, then this
+ * method returns true. Otherwise, this method returns false.
+ */
+bool getUnsatCoreFromSubsolver(SolverEngine& smt,
+                               const std::unordered_set<Node>& queryAsserts,
+                               std::vector<Node>& uasserts);
+/** Same as above, without query asserts */
+void getUnsatCoreFromSubsolver(SolverEngine& smt, std::vector<Node>& uasserts);
+
+}  // namespace theory
+}  // namespace cvc5
+
+#endif /* CVC5__THEORY__SMT_ENGINE_SUBSOLVER_H */

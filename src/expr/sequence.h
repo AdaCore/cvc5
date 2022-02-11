@@ -1,30 +1,34 @@
-/*********************                                                        */
-/*! \file sequence.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The sequence data type.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Andres Noetzli, Aina Niemetz
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The sequence data type.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_public.h"
 
-#ifndef CVC4__EXPR__SEQUENCE_H
-#define CVC4__EXPR__SEQUENCE_H
+#ifndef CVC5__EXPR__SEQUENCE_H
+#define CVC5__EXPR__SEQUENCE_H
 
+#include <memory>
 #include <vector>
-#include "expr/node.h"
 
-namespace CVC4 {
+namespace cvc5 {
 
-class ExprSequence;
+template <bool ref_count>
+class NodeTemplate;
+typedef NodeTemplate<true> Node;
+class TypeNode;
 
-/** The CVC4 sequence class
+/** The cvc5 sequence class
  *
  * This data structure is the domain of values for the sequence type.
  */
@@ -33,11 +37,14 @@ class Sequence
  public:
   /** constructors for Sequence
    *
-   * Internally, a CVC4::Sequence is represented by a vector of Nodes (d_seq),
+   * Internally, a cvc5::Sequence is represented by a vector of Nodes (d_seq),
    * where each Node in this vector must be a constant.
    */
   Sequence() = default;
-  explicit Sequence(TypeNode t, const std::vector<Node>& s);
+  explicit Sequence(const TypeNode& t, const std::vector<Node>& s);
+  Sequence(const Sequence& seq);
+
+  ~Sequence();
 
   Sequence& operator=(const Sequence& y);
 
@@ -54,11 +61,11 @@ class Sequence
   bool rstrncmp(const Sequence& y, size_t n) const;
 
   /** is this the empty sequence? */
-  bool empty() const { return d_seq.empty(); }
+  bool empty() const;
   /** is less than or equal to sequence y */
   bool isLeq(const Sequence& y) const;
   /** Return the length of the sequence */
-  size_t size() const { return d_seq.size(); }
+  size_t size() const;
 
   /** Return true if this sequence is a repetition of the same element */
   bool isRepeated() const;
@@ -77,6 +84,8 @@ class Sequence
   bool hasPrefix(const Sequence& y) const;
   /** Returns true if y is a suffix of this */
   bool hasSuffix(const Sequence& y) const;
+  /** Replace the character at index i in this sequence with t */
+  Sequence update(size_t i, const Sequence& t) const;
   /** Replace the first occurrence of s in this sequence with t */
   Sequence replace(const Sequence& s, const Sequence& t) const;
   /** Return the subsequence of this sequence starting at index i */
@@ -130,23 +139,21 @@ class Sequence
    */
   size_t roverlap(const Sequence& y) const;
 
-  /** get type */
-  TypeNode getType() const { return d_type; }
+  /** get the element type of the sequence */
+  const TypeNode& getType() const;
   /** get the internal Node representation of this sequence */
-  const std::vector<Node>& getVec() const { return d_seq; }
+  const std::vector<Node>& getVec() const;
   /** get the internal node value of the first element in this sequence */
-  Node front() const;
+  const Node& front() const;
   /** get the internal node value of the last element in this sequence */
-  Node back() const;
+  const Node& back() const;
+  /** @return The element at the i-th position */
+  const Node& nth(size_t i) const;
   /**
    * Returns the maximum sequence length representable by this class.
    * Corresponds to the maximum size of d_seq.
    */
   static size_t maxSize();
-
-  //!!!!!!!!!!!!!!! temporary
-  ExprSequence toExprSequence();
-  //!!!!!!!!!!!!!!! end temporary
 
  private:
   /**
@@ -155,7 +162,7 @@ class Sequence
    */
   int cmp(const Sequence& y) const;
   /** The element type of the sequence */
-  TypeNode d_type;
+  std::unique_ptr<TypeNode> d_type;
   /** The data of the sequence */
   std::vector<Node> d_seq;
 };
@@ -167,6 +174,6 @@ struct SequenceHashFunction
 
 std::ostream& operator<<(std::ostream& os, const Sequence& s);
 
-}  // namespace CVC4
+}  // namespace cvc5
 
-#endif /* CVC4__EXPR__SEQUENCE_H */
+#endif /* CVC5__EXPR__SEQUENCE_H */

@@ -1,37 +1,35 @@
-/*********************                                                        */
-/*! \file tptp.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Francois Bobot, Haniel Barbosa
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Definitions of TPTP constants.
- **
- ** Definitions of TPTP constants.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Francois Bobot, Haniel Barbosa
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Definition of TPTP parser.
+ */
 
-#include "parser/antlr_input.h" // Needs to go first.
+#include "cvc5parser_private.h"
+#include "parser/antlr_input.h"  // Needs to go first.
 
-#include "cvc4parser_private.h"
+#ifndef CVC5__PARSER__TPTP_H
+#define CVC5__PARSER__TPTP_H
 
-#ifndef CVC4__PARSER__TPTP_H
-#define CVC4__PARSER__TPTP_H
-
-#include <cassert>
 #include <unordered_map>
 #include <unordered_set>
 
-#include "api/cvc4cpp.h"
+#include "api/cpp/cvc5.h"
 #include "parser/parse_op.h"
 #include "parser/parser.h"
-#include "smt/command.h"
 #include "util/hash.h"
 
-namespace CVC4 {
+namespace cvc5 {
+
+class Command;
 
 namespace api {
 class Solver;
@@ -48,6 +46,9 @@ class Tptp : public Parser {
 
   bool fof() const { return d_fof; }
   void setFof(bool fof) { d_fof = fof; }
+
+  bool hol() const;
+  void setHol();
 
   void forceLogic(const std::string& logic) override;
 
@@ -91,7 +92,7 @@ class Tptp : public Parser {
 
  protected:
   Tptp(api::Solver* solver,
-       Input* input,
+       SymbolManager* sm,
        bool strictMode = false,
        bool parseOnly = false);
 
@@ -133,10 +134,7 @@ class Tptp : public Parser {
    * getAssertionExpr above). This may set a flag in the parser to mark
    * that we have asserted a conjecture.
    */
-  Command* makeAssertCommand(FormulaRole fr,
-                             api::Term expr,
-                             bool cnf,
-                             bool inUnsatCore);
+  Command* makeAssertCommand(FormulaRole fr, api::Term expr, bool cnf);
 
   /** Ugly hack because I don't know how to return an expression from a
       token */
@@ -175,6 +173,13 @@ class Tptp : public Parser {
    * what is necessary in parsing SMT-LIB.
    */
   api::Term applyParseOp(ParseOp& p, std::vector<api::Term>& args);
+  /**
+   * Make decimal, returns a real corresponding to string ( snum "." sden ),
+   * negated if pos is false, having exponent exp, negated exponent if posE is
+   * false.
+   */
+  api::Term mkDecimal(
+      std::string& snum, std::string& sden, bool pos, size_t exp, bool posE);
 
  private:
   void addArithmeticOperators();
@@ -187,7 +192,7 @@ class Tptp : public Parser {
   api::Term d_utr_op;
   api::Term d_uts_op;
   // The set of expression that already have a bridge
-  std::unordered_set<api::Term, api::TermHashFunction> d_r_converted;
+  std::unordered_set<api::Term> d_r_converted;
   std::unordered_map<std::string, api::Term> d_distinct_objects;
 
   std::vector< pANTLR3_INPUT_STREAM > d_in_created;
@@ -204,6 +209,7 @@ class Tptp : public Parser {
 
   bool d_cnf; // in a cnf formula
   bool d_fof; // in an fof formula
+  bool d_hol;  // in a thf formula
 };/* class Tptp */
 
 
@@ -212,12 +218,12 @@ namespace tptp {
  * Just exists to provide the uintptr_t constructor that ANTLR
  * requires.
  */
-struct myExpr : public CVC4::api::Term
+struct myExpr : public cvc5::api::Term
 {
-  myExpr() : CVC4::api::Term() {}
-  myExpr(void*) : CVC4::api::Term() {}
-  myExpr(const CVC4::api::Term& e) : CVC4::api::Term(e) {}
-  myExpr(const myExpr& e) : CVC4::api::Term(e) {}
+  myExpr() : cvc5::api::Term() {}
+  myExpr(void*) : cvc5::api::Term() {}
+  myExpr(const cvc5::api::Term& e) : cvc5::api::Term(e) {}
+  myExpr(const myExpr& e) : cvc5::api::Term(e) {}
 }; /* struct myExpr*/
 
 enum NonAssoc {
@@ -229,10 +235,9 @@ enum NonAssoc {
   NA_REVAND,
 };
 
-}/* CVC4::parser::tptp namespace */
+}  // namespace tptp
 
+}  // namespace parser
+}  // namespace cvc5
 
-}/* CVC4::parser namespace */
-}/* CVC4 namespace */
-
-#endif /* CVC4__PARSER__TPTP_INPUT_H */
+#endif /* CVC5__PARSER__TPTP_INPUT_H */

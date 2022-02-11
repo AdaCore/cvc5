@@ -1,55 +1,55 @@
 #!/usr/bin/env python
-
-#####################
-## \file exceptions.py
-## \verbatim
-## Top contributors (to current version):
-##   Andres Noetzli
-## This file is part of the CVC4 project.
-## Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
-## in the top-level source directory) and their institutional affiliations.
-## All rights reserved.  See the file COPYING in the top-level source
-## directory for licensing information.\endverbatim
+###############################################################################
+# Top contributors (to current version):
+#   Andres Noetzli
+#
+# This file is part of the cvc5 project.
+#
+# Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+# in the top-level source directory and their institutional affiliations.
+# All rights reserved.  See the file COPYING in the top-level source
+# directory for licensing information.
+# #############################################################################
+#
+# Catching cvc5 exceptions with the legacy Python API.
+#
+# A simple demonstration of catching cvc5 exceptions with the legacy Python API.
 ##
-## \brief Catching CVC4 exceptions with the legacy Python API.
-##
-## A simple demonstration of catching CVC4 execptions with the legacy Python
-## API.
 
-import CVC4
+import pycvc5
+from pycvc5 import Kind
 import sys
 
 
 def main():
-    em = CVC4.ExprManager()
-    smt = CVC4.SmtEngine(em)
+    slv = pycvc5.Solver()
 
-    smt.setOption("produce-models", CVC4.SExpr("true"))
+    slv.setOption("produce-models", "true")
 
     # Setting an invalid option
     try:
-        smt.setOption("non-existing", CVC4.SExpr("true"))
+        slv.setOption("non-existing", "true")
         return 1
-    except CVC4.Exception as e:
-        print(e.toString())
+    except:
+        pass
 
     # Creating a term with an invalid type
     try:
-        integer = em.integerType()
-        x = em.mkVar("x", integer)
-        invalidExpr = em.mkExpr(CVC4.AND, x, x)
-        smt.checkSat(invalidExpr)
+        integer = slv.getIntegerSort()
+        x = slv.mkConst("x", integer)
+        invalidTerm = em.mkTerm(AND, x, x)
+        slv.checkSat(invalidTerm)
         return 1
-    except CVC4.Exception as e:
-        print(e.toString())
+    except:
+        pass
 
     # Asking for a model after unsat result
     try:
-        smt.checkSat(em.mkBoolConst(False))
-        smt.getModel()
+        slv.checkSat(slv.mkBoolean(False))
+        slv.getModel()
         return 1
-    except CVC4.Exception as e:
-        print(e.toString())
+    except:
+        pass
 
     return 0
 

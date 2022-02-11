@@ -1,8 +1,8 @@
 ; COMMAND-LINE: --fmf-bound-lazy
 ; EXPECT: unsat
-(set-option :incremental "false")
+(set-option :incremental false)
 (set-info :status unsat)
-(set-logic ALL_SUPPORTED)
+(set-logic ALL)
 (declare-fun Y () String)
 (set-info :notes "ufP_1 is uf type conv P")
 (declare-fun ufP_1 (Int) Int)

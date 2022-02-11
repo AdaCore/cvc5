@@ -1,4 +1,4 @@
-(set-logic ALL_SUPPORTED)
+(set-logic ALL)
 (set-info :status unsat)
 
 (declare-fun x () Int)
@@ -7,12 +7,12 @@
 (declare-fun S () (Set Int))
 (declare-fun T () (Set Int))
 
-(assert (member x S))
+(assert (set.member x S))
 
-(assert (= S (union T (singleton y))))
+(assert (= S (set.union T (set.singleton y))))
 
 (assert (not (= x y)))
 
-(assert (not (member x T)))
+(assert (not (set.member x T)))
 
 (check-sat)

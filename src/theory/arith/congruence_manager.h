@@ -1,47 +1,64 @@
-/*********************                                                        */
-/*! \file congruence_manager.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Tim King, Mathias Preiner, Dejan Jovanovic
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief [[ Add one-line brief description here ]]
- **
- ** [[ Add lengthier description here ]]
- ** \todo document this file
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Alex Ozdemir, Tim King, Andrew Reynolds
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * [[ Add one-line brief description here ]]
+ *
+ * [[ Add lengthier description here ]]
+ * \todo document this file
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
 #pragma once
 
+#include "context/cdhashmap.h"
 #include "context/cdlist.h"
 #include "context/cdmaybe.h"
-#include "context/cdo.h"
 #include "context/cdtrail_queue.h"
-#include "context/context.h"
+#include "proof/trust_node.h"
+#include "smt/env_obj.h"
+#include "theory/arith/arith_utilities.h"
 #include "theory/arith/arithvar.h"
+#include "theory/arith/callbacks.h"
 #include "theory/arith/constraint_forward.h"
-#include "theory/arith/partial_model.h"
-#include "theory/uf/equality_engine.h"
+#include "theory/uf/equality_engine_notify.h"
 #include "util/dense_map.h"
-#include "util/statistics_registry.h"
+#include "util/statistics_stats.h"
 
-namespace CVC4 {
+namespace cvc5 {
+
+class ProofNodeManager;
+class EagerProofGenerator;
+
+namespace context {
+class Context;
+class UserContext;
+}
+
 namespace theory {
+struct EeSetupInfo;
 
-namespace quantifiers {
-class EqualityInference;
+namespace eq {
+class ProofEqEngine;
+class EqualityEngine;
 }
 
 namespace arith {
 
-class ArithCongruenceManager {
-private:
+class ArithVariables;
+
+class ArithCongruenceManager : protected EnvObj
+{
+ private:
   context::CDRaised d_inConflict;
   RaiseEqualityEngineConflict d_raiseConflict;
 
@@ -61,8 +78,6 @@ private:
   public:
     ArithCongruenceNotify(ArithCongruenceManager& acm);
 
-    bool eqNotifyTriggerEquality(TNode equality, bool value) override;
-
     bool eqNotifyTriggerPredicate(TNode predicate, bool value) override;
 
     bool eqNotifyTriggerTermEquality(TheoryId tag,
@@ -72,8 +87,7 @@ private:
 
     void eqNotifyConstantTermMerge(TNode t1, TNode t2) override;
     void eqNotifyNewClass(TNode t) override;
-    void eqNotifyPreMerge(TNode t1, TNode t2) override;
-    void eqNotifyPostMerge(TNode t1, TNode t2) override;
+    void eqNotifyMerge(TNode t1, TNode t2) override;
     void eqNotifyDisequal(TNode t1, TNode t2, TNode reason) override;
   };
   ArithCongruenceNotify d_notify;
@@ -86,9 +100,9 @@ private:
   /* This maps the node a theory engine will request on an explain call to
    * to its corresponding PropUnit.
    * This is node is potentially both the propagation or
-   * Rewriter::rewrite(propagation).
+   * rewrite(propagation).
    */
-  typedef context::CDHashMap<Node, size_t, NodeHashFunction> ExplainMap;
+  typedef context::CDHashMap<Node, size_t> ExplainMap;
   ExplainMap d_explanationMap;
 
   ConstraintDatabase& d_constraintDatabase;
@@ -96,11 +110,54 @@ private:
 
   const ArithVariables& d_avariables;
 
-  eq::EqualityEngine d_ee;
+  /** The equality engine being used by this class */
+  eq::EqualityEngine* d_ee;
+  /** The equality engine we allocated */
+  std::unique_ptr<eq::EqualityEngine> d_allocEe;
+  /** proof manager */
+  ProofNodeManager* d_pnm;
+  /** A proof generator for storing proofs of facts that are asserted to the EQ
+   * engine. Note that these proofs **are not closed**; they may contain
+   * literals from the explanation of their fact as unclosed assumptions.
+   * This makes these proofs SAT-context depdent.
+   *
+   * This is why this generator is separate from the TheoryArithPrivate
+   * generator, which stores closed proofs.
+   */
+  std::unique_ptr<EagerProofGenerator> d_pfGenEe;
+  /** A proof generator for TrustNodes sent to TheoryArithPrivate.
+   *
+   * When TheoryArithPrivate requests an explanation from
+   * ArithCongruenceManager, it can request a TrustNode for that explanation.
+   * This proof generator is the one used in that TrustNode: it stores the
+   * (closed) proofs of implications proved by the
+   * ArithCongruenceManager/EqualityEngine.
+   *
+   * It is insufficient to just use the ProofGenerator from the ProofEqEngine,
+   * since sometimes the ArithCongruenceManager needs to add some
+   * arith-specific reasoning to extend the proof (e.g. rewriting the result
+   * into a normal form).
+   * */
+  std::unique_ptr<EagerProofGenerator> d_pfGenExplain;
 
-  void raiseConflict(Node conflict);
-public:
+  /** Pointer to the proof equality engine of TheoryArith */
+  theory::eq::ProofEqEngine* d_pfee;
+  /** The proof equality engine we allocated */
+  std::unique_ptr<eq::ProofEqEngine> d_allocPfee;
 
+  /** Raise a conflict node `conflict` to the theory of arithmetic.
+   *
+   * When proofs are enabled, a (closed) proof of the conflict should be
+   * provided.
+   */
+  void raiseConflict(Node conflict, std::shared_ptr<ProofNode> pf = nullptr);
+  /**
+   * Are proofs enabled? This is true if a non-null proof manager was provided
+   * to the constructor of this class.
+   */
+  bool isProofEnabled() const;
+
+ public:
   bool inConflict() const;
 
   bool hasMorePropagations() const;
@@ -108,8 +165,6 @@ public:
   const Node getNextPropagation();
 
   bool canExplain(TNode n) const;
-
-  void setMasterEqualityEngine(eq::EqualityEngine* eq);
 
 private:
   Node externalToInternal(TNode n) const;
@@ -123,24 +178,79 @@ private:
   bool propagate(TNode x);
   void explain(TNode literal, std::vector<TNode>& assumptions);
 
-
+  /** Assert this literal to the eq engine. Common functionality for
+   *   * assertionToEqualityEngine(..)
+   *   * equalsConstant(c)
+   *   * equalsConstant(lb, ub)
+   * If proof is off, then just asserts.
+   */
+  void assertLitToEqualityEngine(Node lit,
+                                 TNode reason,
+                                 std::shared_ptr<ProofNode> pf);
   /** This sends a shared term to the uninterpreted equality engine. */
-  void assertionToEqualityEngine(bool eq, ArithVar s, TNode reason);
+  void assertionToEqualityEngine(bool eq,
+                                 ArithVar s,
+                                 TNode reason,
+                                 std::shared_ptr<ProofNode> pf);
+
+  /** Check for proof for this or a symmetric fact
+   *
+   * The proof submitted to this method are stored in `d_pfGenEe`, and should
+   * have closure properties consistent with the documentation for that member.
+   *
+   * @returns whether this or a symmetric fact has a proof.
+   */
+  bool hasProofFor(TNode f) const;
+  /**
+   * Sets the proof for this fact and the symmetric one.
+   *
+   * The proof submitted to this method are stored in `d_pfGenEe`, and should
+   * have closure properties consistent with the documentation for that member.
+   * */
+  void setProofFor(TNode f, std::shared_ptr<ProofNode> pf) const;
 
   /** Dequeues the delay queue and asserts these equalities.*/
   void enableSharedTerms();
   void dequeueLiterals();
 
-  void enqueueIntoNB(const std::set<TNode> all, NodeBuilder<>& nb);
+  void enqueueIntoNB(const std::set<TNode> all, NodeBuilder& nb);
 
-  Node explainInternal(TNode internal);
-public:
+  /**
+   * Determine an explaination for `internal`. That is a conjunction of theory
+   * literals which imply `internal`.
+   *
+   * The TrustNode here is a trusted propagation.
+   */
+  TrustNode explainInternal(TNode internal);
 
-  ArithCongruenceManager(context::Context* satContext, ConstraintDatabase&, SetupLiteralCallBack, const ArithVariables&, RaiseEqualityEngineConflict raiseConflict);
+ public:
+  ArithCongruenceManager(Env& env,
+                         ConstraintDatabase&,
+                         SetupLiteralCallBack,
+                         const ArithVariables&,
+                         RaiseEqualityEngineConflict raiseConflict);
   ~ArithCongruenceManager();
 
-  Node explain(TNode literal);
-  void explain(TNode lit, NodeBuilder<>& out);
+  //--------------------------------- initialization
+  /**
+   * Returns true if we need an equality engine, see
+   * Theory::needsEqualityEngine.
+   */
+  bool needsEqualityEngine(EeSetupInfo& esi);
+  /**
+   * Finish initialize. This class is instructed by TheoryArithPrivate to use
+   * the equality engine ee.
+   */
+  void finishInit(eq::EqualityEngine* ee);
+  //--------------------------------- end initialization
+
+  /**
+   * Return the trust node for the explanation of literal. The returned
+   * trust node is generated by the proof equality engine of this class.
+   */
+  TrustNode explain(TNode literal);
+
+  void explain(TNode lit, NodeBuilder& out);
 
   void addWatchedPair(ArithVar s, TNode x, TNode y);
 
@@ -165,12 +275,7 @@ public:
   void equalsConstant(ConstraintCP eq);
   void equalsConstant(ConstraintCP lb, ConstraintCP ub);
 
-
-  void addSharedTerm(Node x);
-  
-  eq::EqualityEngine * getEqualityEngine() { return &d_ee; }
-
-private:
+ private:
   class Statistics {
   public:
     IntStat d_watchedVariables;
@@ -184,11 +289,12 @@ private:
     IntStat d_conflicts;
 
     Statistics();
-    ~Statistics();
   } d_statistics;
 
-};/* class ArithCongruenceManager */
+}; /* class ArithCongruenceManager */
 
-}/* CVC4::theory::arith namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+std::vector<Node> andComponents(TNode an);
+
+}  // namespace arith
+}  // namespace theory
+}  // namespace cvc5

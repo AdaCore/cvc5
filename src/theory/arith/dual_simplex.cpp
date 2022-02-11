@@ -1,62 +1,61 @@
-/*********************                                                        */
-/*! \file dual_simplex.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Tim King, Morgan Deters, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief [[ Add one-line brief description here ]]
- **
- ** [[ Add lengthier description here ]]
- ** \todo document this file
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Tim King, Aina Niemetz, Morgan Deters
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * This is an implementation of the Simplex Module for the Simplex for
+ * DPLL(T) decision procedure.
+ */
 #include "theory/arith/dual_simplex.h"
 
 #include "base/output.h"
 #include "options/arith_options.h"
+#include "smt/env.h"
 #include "smt/smt_statistics_registry.h"
 #include "theory/arith/constraint.h"
+#include "theory/arith/error_set.h"
+#include "theory/arith/linear_equality.h"
 
 
 using namespace std;
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace arith {
 
-DualSimplexDecisionProcedure::DualSimplexDecisionProcedure(LinearEqualityModule& linEq, ErrorSet& errors, RaiseConflict conflictChannel, TempVarMalloc tvmalloc)
-  : SimplexDecisionProcedure(linEq, errors, conflictChannel, tvmalloc)
-  , d_pivotsInRound()
-  , d_statistics(d_pivots)
+DualSimplexDecisionProcedure::DualSimplexDecisionProcedure(
+    Env& env,
+    LinearEqualityModule& linEq,
+    ErrorSet& errors,
+    RaiseConflict conflictChannel,
+    TempVarMalloc tvmalloc)
+    : SimplexDecisionProcedure(env, linEq, errors, conflictChannel, tvmalloc),
+      d_pivotsInRound(),
+      d_statistics(d_pivots)
 { }
 
-DualSimplexDecisionProcedure::Statistics::Statistics(uint32_t& pivots):
-  d_statUpdateConflicts("theory::arith::dual::UpdateConflicts", 0),
-  d_processSignalsTime("theory::arith::dual::findConflictOnTheQueueTime"),
-  d_simplexConflicts("theory::arith::dual::simplexConflicts",0),
-  d_recentViolationCatches("theory::arith::dual::recentViolationCatches",0),
-  d_searchTime("theory::arith::dual::searchTime"),
-  d_finalCheckPivotCounter("theory::arith::dual::lastPivots", pivots)
+DualSimplexDecisionProcedure::Statistics::Statistics(uint32_t& pivots)
+    : d_statUpdateConflicts(smtStatisticsRegistry().registerInt(
+        "theory::arith::dual::UpdateConflicts")),
+      d_processSignalsTime(smtStatisticsRegistry().registerTimer(
+          "theory::arith::dual::findConflictOnTheQueueTime")),
+      d_simplexConflicts(smtStatisticsRegistry().registerInt(
+          "theory::arith::dual::simplexConflicts")),
+      d_recentViolationCatches(smtStatisticsRegistry().registerInt(
+          "theory::arith::dual::recentViolationCatches")),
+      d_searchTime(smtStatisticsRegistry().registerTimer(
+          "theory::arith::dual::searchTime")),
+      d_finalCheckPivotCounter(
+          smtStatisticsRegistry().registerReference<uint32_t>(
+              "theory::arith::dual::lastPivots", pivots))
 {
-  smtStatisticsRegistry()->registerStat(&d_statUpdateConflicts);
-  smtStatisticsRegistry()->registerStat(&d_processSignalsTime);
-  smtStatisticsRegistry()->registerStat(&d_simplexConflicts);
-  smtStatisticsRegistry()->registerStat(&d_recentViolationCatches);
-  smtStatisticsRegistry()->registerStat(&d_searchTime);
-  smtStatisticsRegistry()->registerStat(&d_finalCheckPivotCounter);
-}
-
-DualSimplexDecisionProcedure::Statistics::~Statistics(){
-  smtStatisticsRegistry()->unregisterStat(&d_statUpdateConflicts);
-  smtStatisticsRegistry()->unregisterStat(&d_processSignalsTime);
-  smtStatisticsRegistry()->unregisterStat(&d_simplexConflicts);
-  smtStatisticsRegistry()->unregisterStat(&d_recentViolationCatches);
-  smtStatisticsRegistry()->unregisterStat(&d_searchTime);
-  smtStatisticsRegistry()->unregisterStat(&d_finalCheckPivotCounter);
 }
 
 Result::Sat DualSimplexDecisionProcedure::dualFindModel(bool exactResult){
@@ -90,30 +89,19 @@ Result::Sat DualSimplexDecisionProcedure::dualFindModel(bool exactResult){
 
   Result::Sat result = Result::SAT_UNKNOWN;
 
-  static const bool verbose = false;
-  exactResult |= options::arithStandardCheckVarOrderPivots() < 0;
+  exactResult |= d_varOrderPivotLimit < 0;
 
-
-  uint32_t checkPeriod = options::arithSimplexCheckPeriod();
+  uint32_t checkPeriod = options().arith.arithSimplexCheckPeriod;
   if(result == Result::SAT_UNKNOWN){
-    uint32_t numDifferencePivots = options::arithHeuristicPivots() < 0 ?
-      d_numVariables + 1 : options::arithHeuristicPivots();
+    uint32_t numDifferencePivots = options().arith.arithHeuristicPivots < 0
+                                       ? d_numVariables + 1
+                                       : options().arith.arithHeuristicPivots;
     // The signed to unsigned conversion is safe.
     if(numDifferencePivots > 0){
 
       d_errorSet.setSelectionRule(d_heuristicRule);
       if(searchForFeasibleSolution(numDifferencePivots)){
         result = Result::UNSAT;
-      }
-    }
-
-    if(verbose && numDifferencePivots > 0){
-      if(result ==  Result::UNSAT){
-        Message() << "diff order found unsat" << endl;
-      }else if(d_errorSet.errorEmpty()){
-        Message() << "diff order found model" << endl;
-      }else{
-        Message() << "diff order missed" << endl;
       }
     }
   }
@@ -128,19 +116,13 @@ Result::Sat DualSimplexDecisionProcedure::dualFindModel(bool exactResult){
           result = Result::UNSAT;
         }
       }
-    }else if( options::arithStandardCheckVarOrderPivots() > 0){
+    }
+    else if (d_varOrderPivotLimit > 0)
+    {
       d_errorSet.setSelectionRule(options::ErrorSelectionRule::VAR_ORDER);
-      if(searchForFeasibleSolution(options::arithStandardCheckVarOrderPivots())){
+      if (searchForFeasibleSolution(d_varOrderPivotLimit))
+      {
         result = Result::UNSAT;
-      }
-      if(verbose){
-        if(result ==  Result::UNSAT){
-          Message() << "restricted var order found unsat" << endl;
-        }else if(d_errorSet.errorEmpty()){
-          Message() << "restricted var order found model" << endl;
-        }else{
-          Message() << "restricted var order missed" << endl;
-        }
       }
     }
   }
@@ -180,17 +162,15 @@ bool DualSimplexDecisionProcedure::searchForFeasibleSolution(uint32_t remainingI
 
     --remainingIterations;
 
-    bool useVarOrderPivot = d_pivotsInRound.count(x_i) >=  options::arithPivotThreshold();
+    bool useVarOrderPivot =
+        d_pivotsInRound.count(x_i) >= options().arith.arithPivotThreshold;
     if(!useVarOrderPivot){
       d_pivotsInRound.add(x_i);
     }
 
-
-    Debug("arith::update")
-      << "pivots in rounds: " <<  d_pivotsInRound.count(x_i)
-      << " use " << useVarOrderPivot
-      << " threshold " << options::arithPivotThreshold()
-      << endl;
+    Debug("arith::update") << "pivots in rounds: " << d_pivotsInRound.count(x_i)
+                           << " use " << useVarOrderPivot << " threshold "
+                           << options().arith.arithPivotThreshold << std::endl;
 
     LinearEqualityModule::VarPreferenceFunction pf = useVarOrderPivot ?
       &LinearEqualityModule::minVarOrder : &LinearEqualityModule::minBoundAndColLength;
@@ -198,7 +178,7 @@ bool DualSimplexDecisionProcedure::searchForFeasibleSolution(uint32_t remainingI
     //DeltaRational beta_i = d_variables.getAssignment(x_i);
     ArithVar x_j = ARITHVAR_SENTINEL;
 
-    int32_t prevErrorSize CVC4_UNUSED = d_errorSet.errorSize();
+    int32_t prevErrorSize CVC5_UNUSED = d_errorSet.errorSize();
 
     if(d_variables.cmpAssignmentLowerBound(x_i) < 0 ){
       x_j = d_linEq.selectSlackUpperBound(x_i, pf);
@@ -234,7 +214,7 @@ bool DualSimplexDecisionProcedure::searchForFeasibleSolution(uint32_t remainingI
     Assert(x_j != ARITHVAR_SENTINEL);
 
     bool conflict = processSignals();
-    int32_t currErrorSize CVC4_UNUSED = d_errorSet.errorSize();
+    int32_t currErrorSize CVC5_UNUSED = d_errorSet.errorSize();
     d_pivots++;
 
     if(Debug.isOn("arith::dual")){
@@ -259,6 +239,6 @@ bool DualSimplexDecisionProcedure::searchForFeasibleSolution(uint32_t remainingI
   return false;
 }
 
-}/* CVC4::theory::arith namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace arith
+}  // namespace theory
+}  // namespace cvc5

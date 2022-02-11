@@ -1,19 +1,20 @@
-/*********************                                                        */
-/*! \file error_set.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Tim King, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief [[ Add one-line brief description here ]]
- **
- ** [[ Add lengthier description here ]]
- ** \todo document this file
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Tim King, Mathias Preiner
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * [[ Add one-line brief description here ]]
+ *
+ * [[ Add lengthier description here ]]
+ * \todo document this file
+ */
 
 #include "theory/arith/error_set.h"
 
@@ -22,46 +23,48 @@
 
 using namespace std;
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace arith {
 
-
 ErrorInformation::ErrorInformation()
-  : d_variable(ARITHVAR_SENTINEL)
-  , d_violated(NullConstraint)
-  , d_sgn(0)
-  , d_relaxed(false)
-  , d_inFocus(false)
-  , d_handle()
-  , d_amount(NULL)
-  , d_metric(0)
+    : d_variable(ARITHVAR_SENTINEL),
+      d_violated(NullConstraint),
+      d_sgn(0),
+      d_relaxed(false),
+      d_inFocus(false),
+      d_handle(),
+      d_amount(nullptr),
+      d_metric(0)
 {
-  Debug("arith::error::mem") << "def constructor " << d_variable << " "  << d_amount << endl;
+  Debug("arith::error::mem")
+      << "def constructor " << d_variable << " " << d_amount.get() << endl;
 }
 
 ErrorInformation::ErrorInformation(ArithVar var, ConstraintP vio, int sgn)
-  : d_variable(var)
-  , d_violated(vio)
-  , d_sgn(sgn)
-  , d_relaxed(false)
-  , d_inFocus(false)
-  , d_handle()
-  , d_amount(NULL)
-  , d_metric(0)
+    : d_variable(var),
+      d_violated(vio),
+      d_sgn(sgn),
+      d_relaxed(false),
+      d_inFocus(false),
+      d_handle(),
+      d_amount(nullptr),
+      d_metric(0)
 {
   Assert(debugInitialized());
-  Debug("arith::error::mem") << "constructor " << d_variable << " "  << d_amount << endl;
+  Debug("arith::error::mem")
+      << "constructor " << d_variable << " " << d_amount.get() << endl;
 }
 
 
 ErrorInformation::~ErrorInformation() {
   Assert(d_relaxed != true);
-  if(d_amount != NULL){
-    Debug("arith::error::mem") << d_amount << endl;
-    Debug("arith::error::mem") << "destroy " << d_variable << " "  << d_amount << endl;
-    delete d_amount;
-    d_amount = NULL;
+  if (d_amount != nullptr)
+  {
+    Debug("arith::error::mem") << d_amount.get() << endl;
+    Debug("arith::error::mem")
+        << "destroy " << d_variable << " " << d_amount.get() << endl;
+    d_amount = nullptr;
   }
 }
 
@@ -74,12 +77,16 @@ ErrorInformation::ErrorInformation(const ErrorInformation& ei)
   , d_handle(ei.d_handle)
   , d_metric(0)
 {
-  if(ei.d_amount == NULL){
-    d_amount = NULL;
-  }else{
-    d_amount = new DeltaRational(*ei.d_amount);
+  if (ei.d_amount == nullptr)
+  {
+    d_amount = nullptr;
   }
-  Debug("arith::error::mem") << "copy const " << d_variable << " "  << d_amount << endl;
+  else
+  {
+    d_amount = std::make_unique<DeltaRational>(*ei.d_amount);
+  }
+  Debug("arith::error::mem")
+      << "copy const " << d_variable << " " << d_amount.get() << endl;
 }
 
 ErrorInformation& ErrorInformation::operator=(const ErrorInformation& ei){
@@ -90,18 +97,27 @@ ErrorInformation& ErrorInformation::operator=(const ErrorInformation& ei){
   d_inFocus = (ei.d_inFocus);
   d_handle = (ei.d_handle);
   d_metric = ei.d_metric;
-  if(d_amount != NULL && ei.d_amount != NULL){
-    Debug("arith::error::mem") << "assignment assign " << d_variable << " "  << d_amount << endl;
+  if (d_amount != nullptr && ei.d_amount != nullptr)
+  {
+    Debug("arith::error::mem")
+        << "assignment assign " << d_variable << " " << d_amount.get() << endl;
     *d_amount = *ei.d_amount;
-  }else if(ei.d_amount != NULL){
-    d_amount = new DeltaRational(*ei.d_amount);
-    Debug("arith::error::mem") << "assignment alloc " << d_variable << " "  << d_amount << endl;
-  }else if(d_amount != NULL){
-    Debug("arith::error::mem") << "assignment release " << d_variable << " "  << d_amount << endl;
-    delete d_amount;
-    d_amount = NULL;
-  }else{
-    d_amount = NULL;
+  }
+  else if (ei.d_amount != nullptr)
+  {
+    d_amount = std::make_unique<DeltaRational>(*ei.d_amount);
+    Debug("arith::error::mem")
+        << "assignment alloc " << d_variable << " " << d_amount.get() << endl;
+  }
+  else if (d_amount != nullptr)
+  {
+    Debug("arith::error::mem")
+        << "assignment release " << d_variable << " " << d_amount.get() << endl;
+    d_amount = nullptr;
+  }
+  else
+  {
+    d_amount = nullptr;
   }
   return *this;
 }
@@ -112,44 +128,38 @@ void ErrorInformation::reset(ConstraintP c, int sgn){
   d_violated = c;
   d_sgn = sgn;
 
-  if(d_amount != NULL){
-    delete d_amount;
-    Debug("arith::error::mem") << "reset " << d_variable << " "  << d_amount << endl;
-    d_amount = NULL;
+  if (d_amount != nullptr)
+  {
+    Debug("arith::error::mem")
+        << "reset " << d_variable << " " << d_amount.get() << endl;
+    d_amount = nullptr;
   }
 }
 
 void ErrorInformation::setAmount(const DeltaRational& am){
-  if(d_amount == NULL){
-    d_amount = new DeltaRational;
-    Debug("arith::error::mem") << "setAmount " << d_variable << " "  << d_amount << endl;
+  if (d_amount == nullptr)
+  {
+    d_amount = std::make_unique<DeltaRational>();
+    Debug("arith::error::mem")
+        << "setAmount " << d_variable << " " << d_amount.get() << endl;
   }
   (*d_amount) = am;
 }
 
-ErrorSet::Statistics::Statistics():
-  d_enqueues("theory::arith::pqueue::enqueues", 0),
-  d_enqueuesCollection("theory::arith::pqueue::enqueuesCollection", 0),
-  d_enqueuesDiffMode("theory::arith::pqueue::enqueuesDiffMode", 0),
-  d_enqueuesVarOrderMode("theory::arith::pqueue::enqueuesVarOrderMode", 0),
-  d_enqueuesCollectionDuplicates("theory::arith::pqueue::enqueuesCollectionDuplicates", 0),
-  d_enqueuesVarOrderModeDuplicates("theory::arith::pqueue::enqueuesVarOrderModeDuplicates", 0)
+ErrorSet::Statistics::Statistics()
+    : d_enqueues(
+        smtStatisticsRegistry().registerInt("theory::arith::pqueue::enqueues")),
+      d_enqueuesCollection(smtStatisticsRegistry().registerInt(
+          "theory::arith::pqueue::enqueuesCollection")),
+      d_enqueuesDiffMode(smtStatisticsRegistry().registerInt(
+          "theory::arith::pqueue::enqueuesDiffMode")),
+      d_enqueuesVarOrderMode(smtStatisticsRegistry().registerInt(
+          "theory::arith::pqueue::enqueuesVarOrderMode")),
+      d_enqueuesCollectionDuplicates(smtStatisticsRegistry().registerInt(
+          "theory::arith::pqueue::enqueuesCollectionDuplicates")),
+      d_enqueuesVarOrderModeDuplicates(smtStatisticsRegistry().registerInt(
+          "theory::arith::pqueue::enqueuesVarOrderModeDuplicates"))
 {
-  smtStatisticsRegistry()->registerStat(&d_enqueues);
-  smtStatisticsRegistry()->registerStat(&d_enqueuesCollection);
-  smtStatisticsRegistry()->registerStat(&d_enqueuesDiffMode);
-  smtStatisticsRegistry()->registerStat(&d_enqueuesVarOrderMode);
-  smtStatisticsRegistry()->registerStat(&d_enqueuesCollectionDuplicates);
-  smtStatisticsRegistry()->registerStat(&d_enqueuesVarOrderModeDuplicates);
-}
-
-ErrorSet::Statistics::~Statistics(){
-  smtStatisticsRegistry()->unregisterStat(&d_enqueues);
-  smtStatisticsRegistry()->unregisterStat(&d_enqueuesCollection);
-  smtStatisticsRegistry()->unregisterStat(&d_enqueuesDiffMode);
-  smtStatisticsRegistry()->unregisterStat(&d_enqueuesVarOrderMode);
-  smtStatisticsRegistry()->unregisterStat(&d_enqueuesCollectionDuplicates);
-  smtStatisticsRegistry()->unregisterStat(&d_enqueuesVarOrderModeDuplicates);
 }
 
 ErrorSet::ErrorSet(ArithVariables& vars,
@@ -477,6 +487,6 @@ void ErrorSet::pushFocusInto(ArithVarVec& vec) const{
   }
 }
 
-}/* CVC4::theory::arith namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace arith
+}  // namespace theory
+}  // namespace cvc5

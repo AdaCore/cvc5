@@ -1,33 +1,35 @@
-/*********************                                                        */
-/*! \file rewriter.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Dejan Jovanovic, Andres Noetzli, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief [[ Add one-line brief description here ]]
- **
- ** [[ Add lengthier description here ]]
- ** \todo document this file
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Andres Noetzli, Dejan Jovanovic
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The Rewriter class.
+ */
 
 #include "theory/rewriter.h"
 
 #include "options/theory_options.h"
-#include "smt/smt_engine.h"
-#include "smt/smt_engine_scope.h"
+#include "proof/conv_proof_generator.h"
 #include "smt/smt_statistics_registry.h"
+#include "smt/solver_engine.h"
+#include "smt/solver_engine_scope.h"
+#include "theory/builtin/proof_checker.h"
+#include "theory/evaluator.h"
+#include "theory/quantifiers/extended_rewrite.h"
 #include "theory/rewriter_tables.h"
 #include "theory/theory.h"
 #include "util/resource_manager.h"
 
 using namespace std;
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 
 // Note that this function is a simplified version of Theory::theoryOf for
@@ -70,7 +72,8 @@ struct RewriteStackElement {
 
   /** The node we're currently rewriting */
   Node d_node;
-  /** Original node */
+  /** Original node (either the unrewritten node or the node after prerewriting)
+   */
   Node d_original;
   /** Id of the theory that's currently rewriting this node */
   unsigned d_theoryId : 8;
@@ -79,13 +82,9 @@ struct RewriteStackElement {
   /** Index of the child this node is done rewriting */
   unsigned d_nextChild : 32;
   /** Builder for this node */
-  NodeBuilder<> d_builder;
+  NodeBuilder d_builder;
 };
 
-RewriteResponse identityRewrite(RewriteEnvironment* re, TNode n)
-{
-  return RewriteResponse(REWRITE_DONE, n);
-}
 
 Node Rewriter::rewrite(TNode node) {
   if (node.getNumChildren() == 0)
@@ -97,53 +96,77 @@ Node Rewriter::rewrite(TNode node) {
   return getInstance()->rewriteTo(theoryOf(node), node);
 }
 
+Node Rewriter::extendedRewrite(TNode node, bool aggr)
+{
+  quantifiers::ExtendedRewriter er(*this, aggr);
+  return er.extendedRewrite(node);
+}
+
+TrustNode Rewriter::rewriteWithProof(TNode node,
+                                     bool isExtEq)
+{
+  // must set the proof checker before calling this
+  Assert(d_tpg != nullptr);
+  if (isExtEq)
+  {
+    // theory rewriter is responsible for rewriting the equality
+    TheoryRewriter* tr = getInstance()->d_theoryRewriters[theoryOf(node)];
+    Assert(tr != nullptr);
+    return tr->rewriteEqualityExtWithProof(node);
+  }
+  Node ret = getInstance()->rewriteTo(theoryOf(node), node, d_tpg.get());
+  return TrustNode::mkTrustRewrite(node, ret, d_tpg.get());
+}
+
+void Rewriter::setProofNodeManager(ProofNodeManager* pnm)
+{
+  // if not already initialized with proof support
+  if (d_tpg == nullptr)
+  {
+    Trace("rewriter") << "Rewriter::setProofNodeManager" << std::endl;
+    // the rewriter is staticly determinstic, thus use static cache policy
+    // for the term conversion proof generator
+    d_tpg.reset(new TConvProofGenerator(pnm,
+                                        nullptr,
+                                        TConvPolicy::FIXPOINT,
+                                        TConvCachePolicy::STATIC,
+                                        "Rewriter::TConvProofGenerator"));
+  }
+}
+
+Node Rewriter::rewriteEqualityExt(TNode node)
+{
+  Assert(node.getKind() == kind::EQUAL);
+  // note we don't force caching of this method currently
+  return d_theoryRewriters[theoryOf(node)]->rewriteEqualityExt(node);
+}
+
 void Rewriter::registerTheoryRewriter(theory::TheoryId tid,
                                       TheoryRewriter* trew)
 {
-  getInstance()->d_theoryRewriters[tid] = trew;
+  d_theoryRewriters[tid] = trew;
 }
 
-void Rewriter::registerPreRewrite(
-    Kind k, std::function<RewriteResponse(RewriteEnvironment*, TNode)> fn)
+TheoryRewriter* Rewriter::getTheoryRewriter(theory::TheoryId theoryId)
 {
-  Assert(k != kind::EQUAL) << "Register pre-rewrites for EQUAL with registerPreRewriteEqual.";
-  d_preRewriters[k] = fn;
-}
-
-void Rewriter::registerPostRewrite(
-    Kind k, std::function<RewriteResponse(RewriteEnvironment*, TNode)> fn)
-{
-  Assert(k != kind::EQUAL) << "Register post-rewrites for EQUAL with registerPostRewriteEqual.";
-  d_postRewriters[k] = fn;
-}
-
-void Rewriter::registerPreRewriteEqual(
-    theory::TheoryId tid,
-    std::function<RewriteResponse(RewriteEnvironment*, TNode)> fn)
-{
-  d_preRewritersEqual[tid] = fn;
-}
-
-void Rewriter::registerPostRewriteEqual(
-    theory::TheoryId tid,
-    std::function<RewriteResponse(RewriteEnvironment*, TNode)> fn)
-{
-  d_postRewritersEqual[tid] = fn;
+  return d_theoryRewriters[theoryId];
 }
 
 Rewriter* Rewriter::getInstance()
 {
-  return smt::currentSmtEngine()->getRewriter();
+  return smt::currentSolverEngine()->getRewriter();
 }
 
-Node Rewriter::rewriteTo(theory::TheoryId theoryId, Node node) {
-
-#ifdef CVC4_ASSERTIONS
+Node Rewriter::rewriteTo(theory::TheoryId theoryId,
+                         Node node,
+                         TConvProofGenerator* tcpg)
+{
+#ifdef CVC5_ASSERTIONS
   bool isEquality = node.getKind() == kind::EQUAL && (!node[0].getType().isBoolean());
 
   if (d_rewriteStack == nullptr)
   {
-    d_rewriteStack.reset(new std::unordered_set<Node, NodeHashFunction>());
+    d_rewriteStack.reset(new std::unordered_set<Node>());
   }
 #endif
 
@@ -151,7 +174,8 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId, Node node) {
 
   // Check if it's been cached already
   Node cached = getPostRewriteCache(theoryId, node);
-  if (!cached.isNull()) {
+  if (!cached.isNull() && (tcpg == nullptr || hasRewrittenWithProofs(node)))
+  {
     return cached;
   }
 
@@ -159,18 +183,11 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId, Node node) {
   vector<RewriteStackElement> rewriteStack;
   rewriteStack.push_back(RewriteStackElement(node, theoryId));
 
-  ResourceManager* rm = NULL;
-  bool hasSmtEngine = smt::smtEngineInScope();
-  if (hasSmtEngine) {
-    rm = NodeManager::currentResourceManager();
-  }
   // Rewrite until the stack is empty
   for (;;){
-
-    if (hasSmtEngine &&
-		d_iterationCount % ResourceManager::getFrequencyCount() == 0) {
-      rm->spendResource(ResourceManager::Resource::RewriteStep);
-      d_iterationCount = 0;
+    if (d_resourceManager != nullptr)
+    {
+      d_resourceManager->spendResource(Resource::RewriteStep);
     }
 
     // Get the top of the recursion stack
@@ -186,12 +203,16 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId, Node node) {
       // Check if the pre-rewrite has already been done (it's in the cache)
       cached = getPreRewriteCache(rewriteStackTop.getTheoryId(),
                                   rewriteStackTop.d_node);
-      if (cached.isNull()) {
+      if (cached.isNull()
+          || (tcpg != nullptr
+              && !hasRewrittenWithProofs(rewriteStackTop.d_node)))
+      {
         // Rewrite until fix-point is reached
         for(;;) {
           // Perform the pre-rewrite
-          RewriteResponse response =
-              preRewrite(rewriteStackTop.getTheoryId(), rewriteStackTop.d_node);
+          RewriteResponse response = preRewrite(
+              rewriteStackTop.getTheoryId(), rewriteStackTop.d_node, tcpg);
+
           // Put the rewritten node to the top of the stack
           rewriteStackTop.d_node = response.d_node;
           TheoryId newTheory = theoryOf(rewriteStackTop.d_node);
@@ -203,6 +224,7 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId, Node node) {
           }
           rewriteStackTop.d_theoryId = newTheory;
         }
+
         // Cache the rewrite
         setPreRewriteCache(rewriteStackTop.getOriginalTheoryId(),
                            rewriteStackTop.d_original,
@@ -221,8 +243,9 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId, Node node) {
     cached = getPostRewriteCache(rewriteStackTop.getTheoryId(),
                                  rewriteStackTop.d_node);
     // If not, go through the children
-    if(cached.isNull()) {
-
+    if (cached.isNull()
+        || (tcpg != nullptr && !hasRewrittenWithProofs(rewriteStackTop.d_node)))
+    {
       // The child we need to rewrite
       unsigned child = rewriteStackTop.d_nextChild++;
 
@@ -261,8 +284,9 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId, Node node) {
       // Done with all pre-rewriting, so let's do the post rewrite
       for(;;) {
         // Do the post-rewrite
-        RewriteResponse response =
-            postRewrite(rewriteStackTop.getTheoryId(), rewriteStackTop.d_node);
+        RewriteResponse response = postRewrite(
+            rewriteStackTop.getTheoryId(), rewriteStackTop.d_node, tcpg);
+
         // We continue with the response we got
         TheoryId newTheoryId = theoryOf(response.d_node);
         if (newTheoryId != rewriteStackTop.getTheoryId()
@@ -271,24 +295,25 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId, Node node) {
           // In the post rewrite if we've changed theories, we must do a full rewrite
           Assert(response.d_node != rewriteStackTop.d_node);
           //TODO: this is not thread-safe - should make this assertion dependent on sequential build
-#ifdef CVC4_ASSERTIONS
+#ifdef CVC5_ASSERTIONS
           Assert(d_rewriteStack->find(response.d_node)
                  == d_rewriteStack->end());
           d_rewriteStack->insert(response.d_node);
 #endif
-          Node rewritten = rewriteTo(newTheoryId, response.d_node);
+          Node rewritten = rewriteTo(newTheoryId, response.d_node, tcpg);
           rewriteStackTop.d_node = rewritten;
-#ifdef CVC4_ASSERTIONS
+#ifdef CVC5_ASSERTIONS
           d_rewriteStack->erase(response.d_node);
 #endif
           break;
         }
         else if (response.d_status == REWRITE_DONE)
         {
-#ifdef CVC4_ASSERTIONS
+#ifdef CVC5_ASSERTIONS
           RewriteResponse r2 =
               d_theoryRewriters[newTheoryId]->postRewrite(response.d_node);
-          Assert(r2.d_node == response.d_node);
+          Assert(r2.d_node == response.d_node)
+              << r2.d_node << " != " << response.d_node;
 #endif
           rewriteStackTop.d_node = response.d_node;
           break;
@@ -301,11 +326,48 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId, Node node) {
                != rewriteStackTop.d_node);
         rewriteStackTop.d_node = response.d_node;
       }
+
       // We're done with the post rewrite, so we add to the cache
+      if (tcpg != nullptr)
+      {
+        // if proofs are enabled, mark that we've rewritten with proofs
+        d_tpgNodes.insert(rewriteStackTop.d_original);
+        if (!cached.isNull())
+        {
+          // We may have gotten a different node, due to non-determinism in
+          // theory rewriters (e.g. quantifiers rewriter which introduces
+          // fresh BOUND_VARIABLE). This can happen if we wrote once without
+          // proofs and then rewrote again with proofs.
+          if (rewriteStackTop.d_node != cached)
+          {
+            Trace("rewriter-proof") << "WARNING: Rewritten forms with and "
+                                       "without proofs were not equivalent"
+                                    << std::endl;
+            Trace("rewriter-proof")
+                << "   original: " << rewriteStackTop.d_original << std::endl;
+            Trace("rewriter-proof")
+                << "with proofs: " << rewriteStackTop.d_node << std::endl;
+            Trace("rewriter-proof") << " w/o proofs: " << cached << std::endl;
+            Node eq = rewriteStackTop.d_node.eqNode(cached);
+            // we make this a post-rewrite, since we are processing a node that
+            // has finished post-rewriting above
+            tcpg->addRewriteStep(rewriteStackTop.d_node,
+                                 cached,
+                                 PfRule::TRUST_REWRITE,
+                                 {},
+                                 {eq},
+                                 false);
+            // don't overwrite the cache, should be the same
+            rewriteStackTop.d_node = cached;
+          }
+        }
+      }
       setPostRewriteCache(rewriteStackTop.getOriginalTheoryId(),
                           rewriteStackTop.d_original,
                           rewriteStackTop.d_node);
-    } else {
+    }
+    else
+    {
       // We were already in cache, so just remember it
       rewriteStackTop.d_node = cached;
       rewriteStackTop.d_theoryId = theoryOf(cached);
@@ -324,41 +386,86 @@ Node Rewriter::rewriteTo(theory::TheoryId theoryId, Node node) {
   }
 
   Unreachable();
-}/* Rewriter::rewriteTo() */
+} /* Rewriter::rewriteTo() */
 
-RewriteResponse Rewriter::preRewrite(theory::TheoryId theoryId, TNode n)
+RewriteResponse Rewriter::preRewrite(theory::TheoryId theoryId,
+                                     TNode n,
+                                     TConvProofGenerator* tcpg)
 {
-  Kind k = n.getKind();
-  std::function<RewriteResponse(RewriteEnvironment*, TNode)> fn =
-      (k == kind::EQUAL) ? d_preRewritersEqual[theoryId] : d_preRewriters[k];
-  if (fn == nullptr)
+  if (tcpg != nullptr)
   {
-    return d_theoryRewriters[theoryId]->preRewrite(n);
+    // call the trust rewrite response interface
+    TrustRewriteResponse tresponse =
+        d_theoryRewriters[theoryId]->preRewriteWithProof(n);
+    // process the trust rewrite response: store the proof step into
+    // tcpg if necessary and then convert to rewrite response.
+    return processTrustRewriteResponse(theoryId, tresponse, true, tcpg);
   }
-  return fn(&d_re, n);
+  return d_theoryRewriters[theoryId]->preRewrite(n);
 }
 
-RewriteResponse Rewriter::postRewrite(theory::TheoryId theoryId, TNode n)
+RewriteResponse Rewriter::postRewrite(theory::TheoryId theoryId,
+                                      TNode n,
+                                      TConvProofGenerator* tcpg)
 {
-  Kind k = n.getKind();
-  std::function<RewriteResponse(RewriteEnvironment*, TNode)> fn =
-      (k == kind::EQUAL) ? d_postRewritersEqual[theoryId] : d_postRewriters[k];
-  if (fn == nullptr)
+  if (tcpg != nullptr)
   {
-    return d_theoryRewriters[theoryId]->postRewrite(n);
+    // same as above, for post-rewrite
+    TrustRewriteResponse tresponse =
+        d_theoryRewriters[theoryId]->postRewriteWithProof(n);
+    return processTrustRewriteResponse(theoryId, tresponse, false, tcpg);
   }
-  return fn(&d_re, n);
+  return d_theoryRewriters[theoryId]->postRewrite(n);
 }
 
-void Rewriter::clearCaches() {
-  Rewriter* rewriter = getInstance();
+RewriteResponse Rewriter::processTrustRewriteResponse(
+    theory::TheoryId theoryId,
+    const TrustRewriteResponse& tresponse,
+    bool isPre,
+    TConvProofGenerator* tcpg)
+{
+  Assert(tcpg != nullptr);
+  TrustNode trn = tresponse.d_node;
+  Assert(trn.getKind() == TrustNodeKind::REWRITE);
+  Node proven = trn.getProven();
+  if (proven[0] != proven[1])
+  {
+    ProofGenerator* pg = trn.getGenerator();
+    if (pg == nullptr)
+    {
+      Node tidn = builtin::BuiltinProofRuleChecker::mkTheoryIdNode(theoryId);
+      // add small step trusted rewrite
+      Node rid = mkMethodId(isPre ? MethodId::RW_REWRITE_THEORY_PRE
+                                  : MethodId::RW_REWRITE_THEORY_POST);
+      tcpg->addRewriteStep(proven[0],
+                           proven[1],
+                           PfRule::THEORY_REWRITE,
+                           {},
+                           {proven, tidn, rid},
+                           isPre);
+    }
+    else
+    {
+      // store proven rewrite step
+      tcpg->addRewriteStep(proven[0], proven[1], pg, isPre);
+    }
+  }
+  return RewriteResponse(tresponse.d_status, trn.getNode());
+}
 
-#ifdef CVC4_ASSERTIONS
-  rewriter->d_rewriteStack.reset(nullptr);
+void Rewriter::clearCaches()
+{
+#ifdef CVC5_ASSERTIONS
+  d_rewriteStack.reset(nullptr);
 #endif
 
-  rewriter->clearCachesInternal();
+  clearCachesInternal();
 }
 
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+bool Rewriter::hasRewrittenWithProofs(TNode n) const
+{
+  return d_tpgNodes.find(n) != d_tpgNodes.end();
+}
+
+}  // namespace theory
+}  // namespace cvc5

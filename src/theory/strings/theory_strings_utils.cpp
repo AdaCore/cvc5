@@ -1,41 +1,44 @@
-/*********************                                                        */
-/*! \file theory_strings_utils.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Util functions for theory strings.
- **
- ** Util functions for theory strings.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Andres Noetzli, Yoni Zohar
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Util functions for theory strings.
+ */
 
 #include "theory/strings/theory_strings_utils.h"
 
+#include <sstream>
+
+#include "expr/attribute.h"
+#include "expr/skolem_manager.h"
 #include "options/strings_options.h"
+#include "theory/quantifiers/fmf/bounded_integers.h"
+#include "theory/quantifiers/quantifiers_attributes.h"
 #include "theory/rewriter.h"
 #include "theory/strings/arith_entail.h"
 #include "theory/strings/strings_entail.h"
 #include "theory/strings/word.h"
+#include "util/rational.h"
+#include "util/regexp.h"
+#include "util/string.h"
 
-using namespace CVC4::kind;
+using namespace cvc5::kind;
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace strings {
 namespace utils {
 
-uint32_t getAlphabetCardinality()
+uint32_t getDefaultAlphabetCardinality()
 {
-  if (options::stdPrintASCII())
-  {
-    Assert(128 <= String::num_codes());
-    return 128;
-  }
   // 3*16^4 = 196608 values in the SMT-LIB standard for Unicode strings
   Assert(196608 <= String::num_codes());
   return 196608;
@@ -74,8 +77,8 @@ void flattenOp(Kind k, Node n, std::vector<Node>& conj)
     return;
   }
   // otherwise, traverse
-  std::unordered_set<TNode, TNodeHashFunction> visited;
-  std::unordered_set<TNode, TNodeHashFunction>::iterator it;
+  std::unordered_set<TNode> visited;
+  std::unordered_set<TNode>::iterator it;
   std::vector<TNode> visit;
   TNode cur;
   visit.push_back(n);
@@ -137,32 +140,10 @@ Node mkConcat(const std::vector<Node>& c, TypeNode tn)
   return NodeManager::currentNM()->mkNode(k, c);
 }
 
-Node mkNConcat(Node n1, Node n2)
-{
-  return Rewriter::rewrite(
-      NodeManager::currentNM()->mkNode(STRING_CONCAT, n1, n2));
-}
-
-Node mkNConcat(Node n1, Node n2, Node n3)
-{
-  return Rewriter::rewrite(
-      NodeManager::currentNM()->mkNode(STRING_CONCAT, n1, n2, n3));
-}
-
-Node mkNConcat(const std::vector<Node>& c, TypeNode tn)
-{
-  return Rewriter::rewrite(mkConcat(c, tn));
-}
-
-Node mkNLength(Node t)
-{
-  return Rewriter::rewrite(NodeManager::currentNM()->mkNode(STRING_LENGTH, t));
-}
-
 Node mkPrefix(Node t, Node n)
 {
   NodeManager* nm = NodeManager::currentNM();
-  return nm->mkNode(STRING_SUBSTR, t, nm->mkConst(Rational(0)), n);
+  return nm->mkNode(STRING_SUBSTR, t, nm->mkConstInt(Rational(0)), n);
 }
 
 Node mkSuffix(Node t, Node n)
@@ -247,16 +228,19 @@ std::pair<bool, std::vector<Node> > collectEmptyEqs(Node x)
   {
     for (const Node& c : x)
     {
-      if (c.getKind() == EQUAL)
+      if (c.getKind() != EQUAL)
       {
-        if (Word::isEmpty(c[0]))
-        {
-          emptyNodes.insert(c[1]);
-        }
-        else if (Word::isEmpty(c[1]))
-        {
-          emptyNodes.insert(c[0]);
-        }
+        allEmptyEqs = false;
+        continue;
+      }
+
+      if (Word::isEmpty(c[0]))
+      {
+        emptyNodes.insert(c[1]);
+      }
+      else if (Word::isEmpty(c[1]))
+      {
+        emptyNodes.insert(c[0]);
       }
       else
       {
@@ -274,10 +258,12 @@ std::pair<bool, std::vector<Node> > collectEmptyEqs(Node x)
       allEmptyEqs, std::vector<Node>(emptyNodes.begin(), emptyNodes.end()));
 }
 
+bool isConstantLike(Node n) { return n.isConst() || n.getKind() == SEQ_UNIT; }
+
 bool isUnboundedWildcard(const std::vector<Node>& rs, size_t start)
 {
   size_t i = start;
-  while (i < rs.size() && rs[i].getKind() == REGEXP_SIGMA)
+  while (i < rs.size() && rs[i].getKind() == REGEXP_ALLCHAR)
   {
     i++;
   }
@@ -287,7 +273,7 @@ bool isUnboundedWildcard(const std::vector<Node>& rs, size_t start)
     return false;
   }
 
-  return rs[i].getKind() == REGEXP_STAR && rs[i][0].getKind() == REGEXP_SIGMA;
+  return rs[i].getKind() == REGEXP_STAR && rs[i][0].getKind() == REGEXP_ALLCHAR;
 }
 
 bool isSimpleRegExp(Node r)
@@ -305,8 +291,9 @@ bool isSimpleRegExp(Node r)
         return false;
       }
     }
-    else if (n.getKind() != REGEXP_SIGMA
-             && (n.getKind() != REGEXP_STAR || n[0].getKind() != REGEXP_SIGMA))
+    else if (n.getKind() != REGEXP_ALLCHAR
+             && (n.getKind() != REGEXP_STAR
+                 || n[0].getKind() != REGEXP_ALLCHAR))
     {
       return false;
     }
@@ -368,7 +355,7 @@ bool isStringKind(Kind k)
 
 bool isRegExpKind(Kind k)
 {
-  return k == REGEXP_EMPTY || k == REGEXP_SIGMA || k == STRING_TO_REGEXP
+  return k == REGEXP_NONE || k == REGEXP_ALLCHAR || k == STRING_TO_REGEXP
          || k == REGEXP_CONCAT || k == REGEXP_UNION || k == REGEXP_INTER
          || k == REGEXP_STAR || k == REGEXP_PLUS || k == REGEXP_OPT
          || k == REGEXP_RANGE || k == REGEXP_LOOP || k == REGEXP_RV
@@ -379,8 +366,9 @@ TypeNode getOwnerStringType(Node n)
 {
   TypeNode tn;
   Kind k = n.getKind();
-  if (k == STRING_STRIDOF || k == STRING_LENGTH || k == STRING_STRCTN
-      || k == STRING_PREFIX || k == STRING_SUFFIX)
+  if (k == STRING_INDEXOF || k == STRING_INDEXOF_RE || k == STRING_LENGTH
+      || k == STRING_CONTAINS || k == SEQ_NTH || k == STRING_PREFIX
+      || k == STRING_SUFFIX)
   {
     // owning string type is the type of first argument
     tn = n[0].getType();
@@ -416,7 +404,12 @@ unsigned getLoopMinOccurrences(TNode node)
   return node.getOperator().getConst<RegExpLoop>().d_loopMinOcc;
 }
 
+Node mkForallInternal(Node bvl, Node body)
+{
+  return quantifiers::BoundedIntegers::mkBoundedForall(bvl, body);
+}
+
 }  // namespace utils
 }  // namespace strings
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5

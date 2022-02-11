@@ -1,30 +1,34 @@
-/*********************                                                        */
-/*! \file nl_lemma_utils.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Utilities for processing lemmas from the non-linear solver
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Gereon Kremer, Tim King
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Utilities for processing lemmas from the non-linear solver.
+ */
 
-#ifndef CVC4__THEORY__ARITH__NL__NL_LEMMA_UTILS_H
-#define CVC4__THEORY__ARITH__NL__NL_LEMMA_UTILS_H
+#ifndef CVC5__THEORY__ARITH__NL__NL_LEMMA_UTILS_H
+#define CVC5__THEORY__ARITH__NL__NL_LEMMA_UTILS_H
 
 #include <tuple>
 #include <vector>
-#include "expr/node.h"
 
-namespace CVC4 {
+#include "expr/node.h"
+#include "theory/theory_inference.h"
+
+namespace cvc5 {
 namespace theory {
 namespace arith {
 namespace nl {
 
 class NlModel;
+class NonlinearExtension;
 
 /**
  * The data structure for a single lemma to process by the non-linear solver,
@@ -37,14 +41,20 @@ class NlModel;
  * - A set of secant points to record (for transcendental secant plane
  * inferences).
  */
-struct NlLemma
+class NlLemma : public SimpleTheoryLemma
 {
-  NlLemma(Node lem) : d_lemma(lem), d_preprocess(false) {}
+ public:
+  NlLemma(InferenceId inf,
+          Node n,
+          LemmaProperty p = LemmaProperty::NONE,
+          ProofGenerator* pg = nullptr)
+      : SimpleTheoryLemma(inf, n, p, pg)
+  {
+  }
   ~NlLemma() {}
-  /** The lemma */
-  Node d_lemma;
-  /** Whether to preprocess the lemma */
-  bool d_preprocess;
+
+  TrustNode processLemma(LemmaProperty& p) override;
+
   /** secant points to add
    *
    * A member (tf, d, c) in this vector indicates that point c should be added
@@ -55,6 +65,8 @@ struct NlLemma
    * Cimatti et al., CADE 2017.
    */
   std::vector<std::tuple<Node, unsigned, Node> > d_secantPoint;
+
+  NonlinearExtension* d_nlext;
 };
 /**
  * Writes a non-linear lemma to a stream.
@@ -81,6 +93,25 @@ struct SortNlModel
   /** the comparison */
   bool operator()(Node i, Node j);
 };
+
+/**
+ * Wrapper for std::sort that uses SortNlModel to sort an iterator range.
+ */
+template <typename It>
+void sortByNlModel(It begin,
+                   It end,
+                   NlModel* model,
+                   bool concrete = true,
+                   bool absolute = false,
+                   bool reverse = false)
+{
+  SortNlModel smv;
+  smv.d_nlm = model;
+  smv.d_isConcrete = concrete;
+  smv.d_isAbsolute = absolute;
+  smv.d_reverse_order = reverse;
+  std::sort(begin, end, smv);
+}
 
 struct SortNonlinearDegree
 {
@@ -114,6 +145,6 @@ class ArgTrie
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5
 
-#endif /* CVC4__THEORY__ARITH__NL_LEMMA_UTILS_H */
+#endif /* CVC5__THEORY__ARITH__NL_LEMMA_UTILS_H */

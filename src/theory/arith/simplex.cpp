@@ -1,53 +1,62 @@
-/*********************                                                        */
-/*! \file simplex.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Tim King, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief [[ Add one-line brief description here ]]
- **
- ** [[ Add lengthier description here ]]
- ** \todo document this file
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Tim King, Gereon Kremer, Andres Noetzli
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * This is an implementation of the Simplex Module for the Simplex for
+ * DPLL(T) decision procedure.
+ */
 
+#include "theory/arith/simplex.h"
 
 #include "base/output.h"
 #include "options/arith_options.h"
+#include "options/smt_options.h"
+#include "smt/env.h"
 #include "theory/arith/constraint.h"
-#include "theory/arith/simplex.h"
-
+#include "theory/arith/error_set.h"
+#include "theory/arith/linear_equality.h"
+#include "theory/arith/tableau.h"
+#include "util/statistics_value.h"
 
 using namespace std;
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace arith {
 
-
-SimplexDecisionProcedure::SimplexDecisionProcedure(LinearEqualityModule& linEq, ErrorSet& errors, RaiseConflict conflictChannel, TempVarMalloc tvmalloc)
-  : d_pivots(0)
-  , d_conflictVariables()
-  , d_linEq(linEq)
-  , d_variables(d_linEq.getVariables())
-  , d_tableau(d_linEq.getTableau())
-  , d_errorSet(errors)
-  , d_numVariables(0)
-  , d_conflictChannel(conflictChannel)
-  , d_conflictBuilder(NULL)
-  , d_arithVarMalloc(tvmalloc)
-  , d_errorSize(0)
-  , d_zero(0)
-  , d_posOne(1)
-  , d_negOne(-1)
+SimplexDecisionProcedure::SimplexDecisionProcedure(
+    Env& env,
+    LinearEqualityModule& linEq,
+    ErrorSet& errors,
+    RaiseConflict conflictChannel,
+    TempVarMalloc tvmalloc)
+    : EnvObj(env),
+      d_pivots(0),
+      d_conflictVariables(),
+      d_linEq(linEq),
+      d_variables(d_linEq.getVariables()),
+      d_tableau(d_linEq.getTableau()),
+      d_errorSet(errors),
+      d_numVariables(0),
+      d_conflictChannel(conflictChannel),
+      d_conflictBuilder(NULL),
+      d_arithVarMalloc(tvmalloc),
+      d_errorSize(0),
+      d_zero(0),
+      d_posOne(1),
+      d_negOne(-1)
 {
-  d_heuristicRule = options::arithErrorSelectionRule();
+  d_heuristicRule = options().arith.arithErrorSelectionRule;
   d_errorSet.setSelectionRule(d_heuristicRule);
-  d_conflictBuilder = new FarkasConflictBuilder();
+  d_conflictBuilder = new FarkasConflictBuilder(options().smt.produceProofs);
 }
 
 SimplexDecisionProcedure::~SimplexDecisionProcedure(){
@@ -68,7 +77,7 @@ bool SimplexDecisionProcedure::standardProcessSignals(TimerStat &timer, IntStat&
 
         Debug("recentlyViolated")
           << "It worked? "
-          << conflicts.getData()
+          << conflicts.get()
           << " " << curr
           << " "  << checkBasicForConflict(curr) << endl;
         reportConflict(curr);
@@ -92,7 +101,7 @@ void SimplexDecisionProcedure::reportConflict(ArithVar basic){
 
   ConstraintCP conflicted = generateConflictForBasic(basic);
   Assert(conflicted != NullConstraint);
-  d_conflictChannel.raiseConflict(conflicted);
+  d_conflictChannel.raiseConflict(conflicted, InferenceId::ARITH_CONF_SIMPLEX);
 
   d_conflictVariables.add(basic);
 }
@@ -115,7 +124,7 @@ ConstraintCP SimplexDecisionProcedure::generateConflictForBasic(ArithVar basic) 
 bool SimplexDecisionProcedure::maybeGenerateConflictForBasic(ArithVar basic) const {
   if(checkBasicForConflict(basic)){
     ConstraintCP conflicted = generateConflictForBasic(basic);
-    d_conflictChannel.raiseConflict(conflicted);
+    d_conflictChannel.raiseConflict(conflicted, InferenceId::UNKNOWN);
     return true;
   }else{
     return false;
@@ -276,6 +285,6 @@ SimplexDecisionProcedure::sgn_table::const_iterator SimplexDecisionProcedure::fi
   pair<ArithVar, int> p = make_pair(col, determinizeSgn(sgn));
   return sgns.find(p);
 }
-}/* CVC4::theory::arith namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace arith
+}  // namespace theory
+}  // namespace cvc5

@@ -1,39 +1,38 @@
-/*********************                                                        */
-/*! \file sygus_grammar_norm.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Haniel Barbosa, Andrew Reynolds, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief implementation of class for for simplifying SyGuS grammars after they
- ** are encoded into datatypes.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Haniel Barbosa, Andrew Reynolds, Tim King
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of class for for simplifying SyGuS grammars after they
+ * are encoded into datatypes.
+ */
 
 #include "theory/quantifiers/sygus/sygus_grammar_norm.h"
 
-#include "expr/datatype.h"
+#include <sstream>
+
+#include "expr/dtype_cons.h"
 #include "expr/node_manager_attributes.h"  // for VarNameAttr
 #include "options/quantifiers_options.h"
-#include "printer/sygus_print_callback.h"
-#include "smt/smt_engine.h"
-#include "smt/smt_engine_scope.h"
 #include "theory/datatypes/theory_datatypes_utils.h"
 #include "theory/quantifiers/cegqi/ceg_instantiator.h"
 #include "theory/quantifiers/sygus/sygus_grammar_cons.h"
 #include "theory/quantifiers/sygus/sygus_grammar_red.h"
 #include "theory/quantifiers/sygus/term_database_sygus.h"
 #include "theory/quantifiers/term_util.h"
-#include "theory/quantifiers_engine.h"
 
 #include <numeric>  // for std::iota
 
-using namespace CVC4::kind;
+using namespace cvc5::kind;
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace quantifiers {
 
@@ -60,7 +59,7 @@ bool OpPosTrie::getOrMakeType(TypeNode tn,
       ss << "_" << std::to_string(op_pos[i]);
     }
     d_unres_tn = NodeManager::currentNM()->mkSort(
-        ss.str(), ExprManager::SORT_FLAG_PLACEHOLDER);
+        ss.str(), NodeManager::SORT_FLAG_PLACEHOLDER);
     Trace("sygus-grammar-normalize-trie")
         << "\tCreating type " << d_unres_tn << "\n";
     unres_tn = d_unres_tn;
@@ -70,8 +69,8 @@ bool OpPosTrie::getOrMakeType(TypeNode tn,
   return d_children[op_pos[ind]].getOrMakeType(tn, unres_tn, op_pos, ind + 1);
 }
 
-SygusGrammarNorm::SygusGrammarNorm(QuantifiersEngine* qe)
-    : d_qe(qe), d_tds(d_qe->getTermDatabaseSygus())
+SygusGrammarNorm::SygusGrammarNorm(Env& env, TermDbSygus* tds)
+    : EnvObj(env), d_tds(tds)
 {
 }
 
@@ -84,8 +83,7 @@ SygusGrammarNorm::TypeObject::TypeObject(TypeNode src_tn, TypeNode unres_tn)
 
 void SygusGrammarNorm::TypeObject::addConsInfo(
     SygusGrammarNorm* sygus_norm,
-    const DTypeConstructor& cons,
-    std::shared_ptr<SygusPrintCallback> spc)
+    const DTypeConstructor& cons)
 {
   Trace("sygus-grammar-normalize") << "...for " << cons.getName() << "\n";
   /* Recover the sygus operator to not lose reference to the original
@@ -107,7 +105,7 @@ void SygusGrammarNorm::TypeObject::addConsInfo(
   }
 
   d_sdt.addConstructor(
-      sygus_op, cons.getName(), consTypes, spc, cons.getWeight());
+      sygus_op, cons.getName(), consTypes, cons.getWeight());
 }
 
 void SygusGrammarNorm::TypeObject::initializeDatatype(
@@ -117,14 +115,14 @@ void SygusGrammarNorm::TypeObject::initializeDatatype(
    * Int, etc) */
   TypeNode sygusType = dt.getSygusType();
   d_sdt.initializeDatatype(sygusType,
-                           sygus_norm->d_sygus_vars.toExpr(),
+                           sygus_norm->d_sygus_vars,
                            dt.getSygusAllowConst(),
                            dt.getSygusAllowAll());
   Trace("sygus-grammar-normalize")
       << "...built datatype " << d_sdt.getDatatype() << " ";
   /* Add to global accumulators */
   sygus_norm->d_dt_all.push_back(d_sdt.getDatatype());
-  sygus_norm->d_unres_t_all.insert(d_unres_tn.toType());
+  sygus_norm->d_unres_t_all.insert(d_unres_tn);
   Trace("sygus-grammar-normalize") << "---------------------------------\n";
 }
 
@@ -225,7 +223,6 @@ void SygusGrammarNorm::TransfChain::buildType(SygusGrammarNorm* sygus_norm,
     to.d_sdt.addConstructor(iden_op,
                             "id",
                             ctypes,
-                            printer::SygusEmptyPrintCallback::getEmptyPC(),
                             0);
     Trace("sygus-grammar-normalize-chain")
         << "\tAdding  " << t << " to " << to.d_unres_tn << "\n";
@@ -267,7 +264,6 @@ void SygusGrammarNorm::TransfChain::buildType(SygusGrammarNorm* sygus_norm,
   to.d_sdt.addConstructor(iden_op,
                           "id_next",
                           ctypes,
-                          printer::SygusEmptyPrintCallback::getEmptyPC(),
                           0);
 }
 
@@ -289,10 +285,11 @@ std::unique_ptr<SygusGrammarNorm::Transf> SygusGrammarNorm::inferTransf(
   Trace("sygus-gnorm") << "  #cons = " << op_pos.size() << " / "
                        << dt.getNumConstructors() << std::endl;
   // look for redundant constructors to drop
-  if (options::sygusMinGrammar() && dt.getNumConstructors() == op_pos.size())
+  if (options().quantifiers.sygusMinGrammar
+      && dt.getNumConstructors() == op_pos.size())
   {
-    SygusRedundantCons src;
-    src.initialize(d_qe, tn);
+    SygusRedundantCons src(d_env);
+    src.initialize(d_tds, tn);
     std::vector<unsigned> rindices;
     src.getRedundant(rindices);
     if (!rindices.empty())
@@ -306,7 +303,7 @@ std::unique_ptr<SygusGrammarNorm::Transf> SygusGrammarNorm::inferTransf(
 
   // if normalization option is not enabled, we do not infer the transformations
   // below
-  if (!options::sygusGrammarNorm())
+  if (!options().quantifiers.sygusGrammarNorm)
   {
     return nullptr;
   }
@@ -467,12 +464,11 @@ TypeNode SygusGrammarNorm::normalizeSygusRec(TypeNode tn,
   // Remaining operators are rebuilt as they are.
   // Notice that we must extract the Datatype here to get the (Expr-layer)
   // sygus print callback.
-  const Datatype& dtt = DatatypeType(tn.toType()).getDatatype();
   for (unsigned i = 0, size = op_pos.size(); i < size; ++i)
   {
     unsigned oi = op_pos[i];
     Assert(oi < dt.getNumConstructors());
-    to.addConsInfo(this, dt[oi], dtt[oi].getSygusPrintCallback());
+    to.addConsInfo(this, dt[oi]);
   }
   /* Build normalize datatype */
   if (Trace.isOn("sygus-grammar-normalize"))
@@ -524,24 +520,23 @@ TypeNode SygusGrammarNorm::normalizeSygusType(TypeNode tn, Node sygus_vars)
       Trace("sygus-grammar-normalize-build") << d_dt_all[i];
     }
     Trace("sygus-grammar-normalize-build") << " and unresolved types\n";
-    for (const Type& unres_t : d_unres_t_all)
+    for (const TypeNode& unres_t : d_unres_t_all)
     {
       Trace("sygus-grammar-normalize-build") << unres_t << " ";
     }
     Trace("sygus-grammar-normalize-build") << "\n";
   }
   Assert(d_dt_all.size() == d_unres_t_all.size());
-  std::vector<DatatypeType> types =
-      NodeManager::currentNM()->toExprManager()->mkMutualDatatypeTypes(
-          d_dt_all, d_unres_t_all, ExprManager::DATATYPE_FLAG_PLACEHOLDER);
+  std::vector<TypeNode> types = NodeManager::currentNM()->mkMutualDatatypeTypes(
+      d_dt_all, d_unres_t_all, NodeManager::DATATYPE_FLAG_PLACEHOLDER);
   Assert(types.size() == d_dt_all.size());
   /* Clear accumulators */
   d_dt_all.clear();
   d_unres_t_all.clear();
   /* By construction the normalized type node will be the last one considered */
-  return TypeNode::fromType(types.back());
+  return types.back();
 }
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5

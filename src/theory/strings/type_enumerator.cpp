@@ -1,23 +1,25 @@
-/*********************                                                        */
-/*! \file type_enumerator.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mathias Preiner, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of enumerators for strings
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Mathias Preiner, Andres Noetzli
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of enumerators for strings.
+ */
 
 #include "theory/strings/type_enumerator.h"
 
+#include "expr/sequence.h"
 #include "theory/strings/theory_strings_utils.h"
 #include "util/string.h"
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace strings {
 
@@ -176,6 +178,9 @@ SeqEnumLen::SeqEnumLen(TypeNode tn,
 {
   d_elementEnumerator.reset(
       new TypeEnumerator(d_type.getSequenceElementType(), tep));
+  // ensure non-empty element domain
+  d_elementDomain.push_back((**d_elementEnumerator));
+  ++(*d_elementEnumerator);
   mkCurr();
 }
 
@@ -192,7 +197,7 @@ bool SeqEnumLen::increment()
   {
     // yet to establish domain
     Assert(d_elementEnumerator != nullptr);
-    d_elementDomain.push_back((**d_elementEnumerator).toExpr());
+    d_elementDomain.push_back((**d_elementEnumerator));
     ++(*d_elementEnumerator);
   }
   // the current cardinality is the domain size of the element
@@ -208,20 +213,49 @@ bool SeqEnumLen::increment()
 
 void SeqEnumLen::mkCurr()
 {
-  std::vector<Expr> seq;
+  std::vector<Node> seq;
   const std::vector<unsigned>& data = d_witer->getData();
   for (unsigned i : data)
   {
+    Assert(i < d_elementDomain.size());
     seq.push_back(d_elementDomain[i]);
   }
   // make sequence from seq
-  d_curr =
-      NodeManager::currentNM()->mkConst(ExprSequence(d_type.toType(), seq));
+  d_curr = NodeManager::currentNM()->mkConst(
+      Sequence(d_type.getSequenceElementType(), seq));
+}
+
+SEnumLenSet::SEnumLenSet(TypeEnumeratorProperties* tep) : d_tep(tep) {}
+
+SEnumLen* SEnumLenSet::getEnumerator(size_t len, TypeNode tn)
+{
+  std::pair<size_t, TypeNode> key(len, tn);
+  std::map<std::pair<size_t, TypeNode>, std::unique_ptr<SEnumLen> >::iterator
+      it = d_sels.find(key);
+  if (it != d_sels.end())
+  {
+    return it->second.get();
+  }
+  if (tn.isString())  // string-only
+  {
+    d_sels[key].reset(
+        new StringEnumLen(len,
+                          len,
+                          d_tep ? d_tep->getStringsAlphabetCard()
+                                : utils::getDefaultAlphabetCardinality()));
+  }
+  else
+  {
+    d_sels[key].reset(new SeqEnumLen(tn, d_tep, len, len));
+  }
+  return d_sels[key].get();
 }
 
 StringEnumerator::StringEnumerator(TypeNode type, TypeEnumeratorProperties* tep)
     : TypeEnumeratorBase<StringEnumerator>(type),
-      d_wenum(0, utils::getAlphabetCardinality())
+      d_wenum(0,
+              tep ? tep->getStringsAlphabetCard()
+                  : utils::getDefaultAlphabetCardinality())
 {
   Assert(type.getKind() == kind::TYPE_CONSTANT
          && type.getConst<TypeConstant>() == STRING_TYPE);
@@ -267,4 +301,4 @@ bool SequenceEnumerator::isFinished() { return d_wenum.isFinished(); }
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5

@@ -1,28 +1,29 @@
-/*********************                                                        */
-/*! \file word.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Utility functions for words.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Andres Noetzli
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Utility functions for words.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__STRINGS__WORD_H
-#define CVC4__THEORY__STRINGS__WORD_H
+#ifndef CVC5__THEORY__STRINGS__WORD_H
+#define CVC5__THEORY__STRINGS__WORD_H
 
 #include <vector>
 
 #include "expr/node.h"
 #include "expr/type_node.h"
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace strings {
 
@@ -32,9 +33,6 @@ class Word
  public:
   /** make empty constant of type tn */
   static Node mkEmptyWord(TypeNode tn);
-
-  /** make empty constant of kind k */
-  static Node mkEmptyWord(Kind k);
 
   /** make word from constants in (non-empty) vector vec */
   static Node mkWordFlatten(const std::vector<Node>& xs);
@@ -82,6 +80,9 @@ class Word
 
   /** Returns true if y is a suffix of x */
   static bool hasSuffix(TNode x, TNode y);
+
+  /** Replace the character at index n in x with t */
+  static Node update(TNode x, std::size_t n, TNode t);
 
   /** Replace the first occurrence of y in x with t */
   static Node replace(TNode x, TNode y, TNode t);
@@ -165,6 +166,6 @@ class Word
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5
 
 #endif

@@ -1,19 +1,18 @@
-/*********************                                                        */
-/*! \file soi_simplex.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Tim King, Morgan Deters, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief [[ Add one-line brief description here ]]
- **
- ** [[ Add lengthier description here ]]
- ** \todo document this file
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Tim King, Aina Niemetz, Morgan Deters
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * This is an implementation of the Simplex Module for the Simplex for
+ * DPLL(T) decision procedure.
+ */
 #include "theory/arith/soi_simplex.h"
 
 #include <algorithm>
@@ -22,80 +21,56 @@
 #include "options/arith_options.h"
 #include "smt/smt_statistics_registry.h"
 #include "theory/arith/constraint.h"
-#include "util/statistics_registry.h"
+#include "theory/arith/error_set.h"
+#include "theory/arith/tableau.h"
+#include "util/statistics_stats.h"
 
 using namespace std;
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace arith {
 
-
-SumOfInfeasibilitiesSPD::SumOfInfeasibilitiesSPD(LinearEqualityModule& linEq, ErrorSet& errors, RaiseConflict conflictChannel, TempVarMalloc tvmalloc)
-  : SimplexDecisionProcedure(linEq, errors, conflictChannel, tvmalloc)
-  , d_soiVar(ARITHVAR_SENTINEL)
-  , d_pivotBudget(0)
-  , d_prevWitnessImprovement(AntiProductive)
-  , d_witnessImprovementInARow(0)
-  , d_sgnDisagreements()
-  , d_statistics(d_pivots)
+SumOfInfeasibilitiesSPD::SumOfInfeasibilitiesSPD(Env& env,
+                                                 LinearEqualityModule& linEq,
+                                                 ErrorSet& errors,
+                                                 RaiseConflict conflictChannel,
+                                                 TempVarMalloc tvmalloc)
+    : SimplexDecisionProcedure(env, linEq, errors, conflictChannel, tvmalloc),
+      d_soiVar(ARITHVAR_SENTINEL),
+      d_pivotBudget(0),
+      d_prevWitnessImprovement(AntiProductive),
+      d_witnessImprovementInARow(0),
+      d_sgnDisagreements(),
+      d_statistics("theory::arith::SOI", d_pivots)
 { }
 
-SumOfInfeasibilitiesSPD::Statistics::Statistics(uint32_t& pivots):
-  d_initialSignalsTime("theory::arith::SOI::initialProcessTime"),
-  d_initialConflicts("theory::arith::SOI::UpdateConflicts", 0),
-  d_soiFoundUnsat("theory::arith::SOI::FoundUnsat", 0),
-  d_soiFoundSat("theory::arith::SOI::FoundSat", 0),
-  d_soiMissed("theory::arith::SOI::Missed", 0),
-  d_soiConflicts("theory::arith::SOI::ConfMin::num", 0),
-  d_hasToBeMinimal("theory::arith::SOI::HasToBeMin", 0),
-  d_maybeNotMinimal("theory::arith::SOI::MaybeNotMin", 0),
-  d_soiTimer("theory::arith::SOI::Time"),
-  d_soiFocusConstructionTimer("theory::arith::SOI::Construction"),
-  d_soiConflictMinimization("theory::arith::SOI::Conflict::Minimization"),
-  d_selectUpdateForSOI("theory::arith::SOI::selectSOI"),
-  d_finalCheckPivotCounter("theory::arith::SOI::lastPivots", pivots)
+SumOfInfeasibilitiesSPD::Statistics::Statistics(const std::string& name,
+                                                uint32_t& pivots)
+    : d_initialSignalsTime(
+        smtStatisticsRegistry().registerTimer(name + "initialProcessTime")),
+      d_initialConflicts(
+          smtStatisticsRegistry().registerInt(name + "UpdateConflicts")),
+      d_soiFoundUnsat(smtStatisticsRegistry().registerInt(name + "FoundUnsat")),
+      d_soiFoundSat(smtStatisticsRegistry().registerInt(name + "FoundSat")),
+      d_soiMissed(smtStatisticsRegistry().registerInt(name + "Missed")),
+      d_soiConflicts(
+          smtStatisticsRegistry().registerInt(name + "ConfMin::num")),
+      d_hasToBeMinimal(
+          smtStatisticsRegistry().registerInt(name + "HasToBeMin")),
+      d_maybeNotMinimal(
+          smtStatisticsRegistry().registerInt(name + "MaybeNotMin")),
+      d_soiTimer(smtStatisticsRegistry().registerTimer(name + "Time")),
+      d_soiFocusConstructionTimer(
+          smtStatisticsRegistry().registerTimer(name + "Construction")),
+      d_soiConflictMinimization(smtStatisticsRegistry().registerTimer(
+          name + "Conflict::Minimization")),
+      d_selectUpdateForSOI(
+          smtStatisticsRegistry().registerTimer(name + "selectSOI")),
+      d_finalCheckPivotCounter(
+          smtStatisticsRegistry().registerReference<uint32_t>(
+              name + "lastPivots", pivots))
 {
-  smtStatisticsRegistry()->registerStat(&d_initialSignalsTime);
-  smtStatisticsRegistry()->registerStat(&d_initialConflicts);
-
-  smtStatisticsRegistry()->registerStat(&d_soiFoundUnsat);
-  smtStatisticsRegistry()->registerStat(&d_soiFoundSat);
-  smtStatisticsRegistry()->registerStat(&d_soiMissed);
-
-  smtStatisticsRegistry()->registerStat(&d_soiConflicts);
-  smtStatisticsRegistry()->registerStat(&d_hasToBeMinimal);
-  smtStatisticsRegistry()->registerStat(&d_maybeNotMinimal);
-
-  smtStatisticsRegistry()->registerStat(&d_soiTimer);
-  smtStatisticsRegistry()->registerStat(&d_soiFocusConstructionTimer);
-
-  smtStatisticsRegistry()->registerStat(&d_soiConflictMinimization);
-
-  smtStatisticsRegistry()->registerStat(&d_selectUpdateForSOI);
-
-  smtStatisticsRegistry()->registerStat(&d_finalCheckPivotCounter);
-}
-
-SumOfInfeasibilitiesSPD::Statistics::~Statistics(){
-  smtStatisticsRegistry()->unregisterStat(&d_initialSignalsTime);
-  smtStatisticsRegistry()->unregisterStat(&d_initialConflicts);
-
-  smtStatisticsRegistry()->unregisterStat(&d_soiFoundUnsat);
-  smtStatisticsRegistry()->unregisterStat(&d_soiFoundSat);
-  smtStatisticsRegistry()->unregisterStat(&d_soiMissed);
-
-  smtStatisticsRegistry()->unregisterStat(&d_soiConflicts);
-  smtStatisticsRegistry()->unregisterStat(&d_hasToBeMinimal);
-  smtStatisticsRegistry()->unregisterStat(&d_maybeNotMinimal);
-
-  smtStatisticsRegistry()->unregisterStat(&d_soiTimer);
-  smtStatisticsRegistry()->unregisterStat(&d_soiFocusConstructionTimer);
-
-  smtStatisticsRegistry()->unregisterStat(&d_soiConflictMinimization);
-
-  smtStatisticsRegistry()->unregisterStat(&d_selectUpdateForSOI);
-  smtStatisticsRegistry()->unregisterStat(&d_finalCheckPivotCounter);
 }
 
 Result::Sat SumOfInfeasibilitiesSPD::findModel(bool exactResult){
@@ -105,7 +80,6 @@ Result::Sat SumOfInfeasibilitiesSPD::findModel(bool exactResult){
   d_pivots = 0;
   static thread_local unsigned int instance = 0;
   instance = instance + 1;
-  static const bool verbose = false;
 
   if(d_errorSet.errorEmpty() && !d_errorSet.moreSignals()){
     Debug("soi::findModel") << "soiFindModel("<< instance <<") trivial" << endl;
@@ -121,7 +95,6 @@ Result::Sat SumOfInfeasibilitiesSPD::findModel(bool exactResult){
 
   if(initialProcessSignals()){
     d_conflictVariables.purge();
-    if(verbose){ Message() << "fcFindModel("<< instance <<") early conflict" << endl; }
     Debug("soi::findModel") << "fcFindModel("<< instance <<") early conflict" << endl;
     Assert(d_conflictVariables.empty());
     return Result::UNSAT;
@@ -134,7 +107,7 @@ Result::Sat SumOfInfeasibilitiesSPD::findModel(bool exactResult){
 
   Debug("soi::findModel") << "fcFindModel(" << instance <<") start non-trivial" << endl;
 
-  exactResult |= options::arithStandardCheckVarOrderPivots() < 0;
+  exactResult |= d_varOrderPivotLimit < 0;
 
   d_prevWitnessImprovement = HeuristicDegenerate;
   d_witnessImprovementInARow = 0;
@@ -145,24 +118,18 @@ Result::Sat SumOfInfeasibilitiesSPD::findModel(bool exactResult){
     if(exactResult){
       d_pivotBudget = -1;
     }else{
-      d_pivotBudget = options::arithStandardCheckVarOrderPivots();
+      d_pivotBudget = d_varOrderPivotLimit;
     }
 
     result = sumOfInfeasibilities();
 
     if(result ==  Result::UNSAT){
       ++(d_statistics.d_soiFoundUnsat);
-      if(verbose){ Message() << "fc found unsat";}
     }else if(d_errorSet.errorEmpty()){
       ++(d_statistics.d_soiFoundSat);
-      if(verbose){ Message() << "fc found model"; }
     }else{
       ++(d_statistics.d_soiMissed);
-      if(verbose){ Message() << "fc missed"; }
     }
-  }
-  if(verbose){
-    Message() << "(" << instance << ") pivots " << d_pivots << endl;
   }
 
   Assert(!d_errorSet.moreSignals());
@@ -266,7 +233,7 @@ UpdateInfo SumOfInfeasibilitiesSPD::selectUpdate(LinearEqualityModule::UpdatePre
     }
   }
 
-  CompPenaltyColLength colCmp(&d_linEq);
+  CompPenaltyColLength colCmp(&d_linEq, options().arith.havePenalties);
   CandVector::iterator i = candidates.begin();
   CandVector::iterator end = candidates.end();
   std::make_heap(i, end, colCmp);
@@ -357,30 +324,7 @@ void SumOfInfeasibilitiesSPD::debugPrintSignal(ArithVar updated) const{
 void SumOfInfeasibilitiesSPD::updateAndSignal(const UpdateInfo& selected, WitnessImprovement w){
   ArithVar nonbasic = selected.nonbasic();
 
-  static bool verbose = false;
-
   Debug("updateAndSignal") << "updateAndSignal " << selected << endl;
-
-  stringstream ss;
-  if(verbose){
-    d_errorSet.debugPrint(ss);
-    if(selected.describesPivot()){
-      ArithVar leaving = selected.leaving();
-      ss << "leaving " << leaving
-         << " " << d_tableau.basicRowLength(leaving)
-         << " " << d_linEq.debugBasicAtBoundCount(leaving)
-         << endl;
-    }
-    if(degenerate(w) && selected.describesPivot()){
-      ArithVar leaving = selected.leaving();
-      Message()
-        << "degenerate " << leaving
-        << ", atBounds " << d_linEq.basicsAtBounds(selected)
-        << ", len " << d_tableau.basicRowLength(leaving)
-        << ", bc " << d_linEq.debugBasicAtBoundCount(leaving)
-        << endl;
-    }
-  }
 
   if(selected.describesPivot()){
     ConstraintP limiting = selected.limiting();
@@ -424,10 +368,6 @@ void SumOfInfeasibilitiesSPD::updateAndSignal(const UpdateInfo& selected, Witnes
     }
   }
 
-  if(verbose){
-    Message() << "conflict variable " << selected << endl;
-    Message() << ss.str();
-  }
   if(Debug.isOn("error")){ d_errorSet.debugPrint(Debug("error")); }
 
   //Assert(debugSelectedErrorDropped(selected, d_errorSize, d_errorSet.errorSize()));
@@ -832,7 +772,8 @@ bool SumOfInfeasibilitiesSPD::generateSOIConflict(const ArithVarVec& subset){
       d_conflictBuilder->addConstraint(c, coeff);
     }
     ConstraintCP conflicted = d_conflictBuilder->commitConflict();
-    d_conflictChannel.raiseConflict(conflicted);
+    d_conflictChannel.raiseConflict(conflicted,
+                                    InferenceId::ARITH_CONF_SOI_SIMPLEX);
   }
 
   tearDownInfeasiblityFunction(d_statistics.d_soiConflictMinimization, d_soiVar);
@@ -858,10 +799,13 @@ WitnessImprovement SumOfInfeasibilitiesSPD::SOIConflict(){
   tearDownInfeasiblityFunction(d_statistics.d_soiConflictMinimization, d_soiVar);
   d_soiVar = ARITHVAR_SENTINEL;
 
-  if(options::soiQuickExplain()){
+  if (options().arith.soiQuickExplain)
+  {
     quickExplain();
     generateSOIConflict(d_qeConflict);
-  }else{
+  }
+  else
+  {
     vector<ArithVarVec> subsets = greedyConflictSubsets();
     Assert(d_soiVar == ARITHVAR_SENTINEL);
     bool anySuccess = false;
@@ -953,8 +897,7 @@ bool SumOfInfeasibilitiesSPD::debugSOI(WitnessImprovement w, ostream& out, int i
 
 Result::Sat SumOfInfeasibilitiesSPD::sumOfInfeasibilities(){
   static int instance = 0;
-  static bool verbose = false;
-
+  
   TimerStat::CodeTimer codeTimer(d_statistics.d_soiTimer);
 
   Assert(d_sgnDisagreements.empty());
@@ -977,14 +920,11 @@ Result::Sat SumOfInfeasibilitiesSPD::sumOfInfeasibilities(){
     // - conflict
     // - budget was exhausted
     // - focus went down
-    Debug("dualLike") << "selectFocusImproving " << endl;
     WitnessImprovement w = soiRound();
+    Debug("dualLike") << "selectFocusImproving -> " << w << endl;
 
     Assert(d_errorSize == d_errorSet.errorSize());
 
-    if(verbose){
-      debugSOI(w,  Message(), instance);
-    }
     Assert(debugSOI(w, Debug("dualLike"), instance));
   }
 
@@ -1006,6 +946,6 @@ Result::Sat SumOfInfeasibilitiesSPD::sumOfInfeasibilities(){
   }
 }
 
-}/* CVC4::theory::arith namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace arith
+}  // namespace theory
+}  // namespace cvc5

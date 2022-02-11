@@ -1,5 +1,5 @@
-; COMMAND-LINE: --solve-bv-as-int=1 --no-check-models  --no-check-unsat-cores --no-check-proofs 
-; COMMAND-LINE: --solve-bv-as-int=8 --no-check-models  --no-check-unsat-cores --no-check-proofs
+; COMMAND-LINE: --solve-bv-as-int=sum --bvand-integer-granularity=1
+; COMMAND-LINE: --solve-bv-as-int=sum --bv-to-int-use-pow2 --bvand-integer-granularity=1
 ; EXPECT: unsat
 (set-logic QF_BV)
 (declare-fun a () (_ BitVec 8))

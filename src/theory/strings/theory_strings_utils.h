@@ -1,35 +1,34 @@
-/*********************                                                        */
-/*! \file theory_strings_utils.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Util functions for theory strings.
- **
- ** Util functions for theory strings.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Andres Noetzli
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Util functions for theory strings.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__STRINGS__THEORY_STRINGS_UTILS_H
-#define CVC4__THEORY__STRINGS__THEORY_STRINGS_UTILS_H
+#ifndef CVC5__THEORY__STRINGS__THEORY_STRINGS_UTILS_H
+#define CVC5__THEORY__STRINGS__THEORY_STRINGS_UTILS_H
 
 #include <vector>
 
 #include "expr/node.h"
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace strings {
 namespace utils {
 
-/** get the cardinality of the alphabet used, based on the options */
-uint32_t getAlphabetCardinality();
+/** get the default cardinality of the alphabet used */
+uint32_t getDefaultAlphabetCardinality();
 
 /**
  * Make the conjunction of nodes in a. Removes duplicate conjuncts, returns
@@ -60,27 +59,6 @@ void getConcat(Node n, std::vector<Node>& c);
  * expression) type tn.
  */
 Node mkConcat(const std::vector<Node>& c, TypeNode tn);
-
-/**
- * Returns the rewritten form of the string concatenation of n1 and n2.
- */
-Node mkNConcat(Node n1, Node n2);
-
-/**
- * Returns the rewritten form of the string concatenation of n1, n2 and n3.
- */
-Node mkNConcat(Node n1, Node n2, Node n3);
-
-/**
- * Returns the rewritten form of the concatentation from vector c of
- * (string-like) type tn.
- */
-Node mkNConcat(const std::vector<Node>& c, TypeNode tn);
-
-/**
- * Returns the rewritten form of the length of string term t.
- */
-Node mkNLength(Node t);
 
 /**
  * Returns (pre t n), which is (str.substr t 0 n).
@@ -148,6 +126,15 @@ Node mkSubstrChain(Node base,
 std::pair<bool, std::vector<Node> > collectEmptyEqs(Node x);
 
 /**
+ * Return if a string-like term n is "constant-like", that is, either a
+ * constant string/sequence, or an application of seq.unit.
+ *
+ * @param n The string-like term
+ * @return true if n is constant-like.
+ */
+bool isConstantLike(Node n);
+
+/**
  * Given a vector of regular expression nodes and a start index that points to
  * a wildcard, returns true if the wildcard is unbounded (i.e. it is followed
  * by an arbitrary number of `re.allchar`s and then an `re.*(re.allchar)`. If
@@ -208,9 +195,18 @@ unsigned getLoopMaxOccurrences(TNode node);
 /* Get the minimum occurrences of given regexp loop node. */
 unsigned getLoopMinOccurrences(TNode node);
 
+/**
+ * Make internal quantified formula with bound variable list bvl and body.
+ * Internally, we get a node corresponding to marking a quantified formula as
+ * an "internal" one. This node is provided as the third argument of the
+ * FORALL returned by this method. This ensures that E-matching is not applied
+ * to the quantified formula.
+ */
+Node mkForallInternal(Node bvl, Node body);
+
 }  // namespace utils
 }  // namespace strings
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5
 
 #endif

@@ -1,22 +1,23 @@
-/*********************                                                        */
-/*! \file sygus_grammar_cons.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Yoni Zohar, Haniel Barbosa
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief class for constructing inductive datatypes that correspond to
- ** grammars that encode syntactic restrictions for SyGuS.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Yoni Zohar, Haniel Barbosa
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Class for constructing inductive datatypes that correspond to
+ * grammars that encode syntactic restrictions for SyGuS.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__SYGUS_GRAMMAR_CONS_H
-#define CVC4__THEORY__QUANTIFIERS__SYGUS_GRAMMAR_CONS_H
+#ifndef CVC5__THEORY__QUANTIFIERS__SYGUS_GRAMMAR_CONS_H
+#define CVC5__THEORY__QUANTIFIERS__SYGUS_GRAMMAR_CONS_H
 
 #include <map>
 #include <vector>
@@ -24,11 +25,10 @@
 #include "expr/attribute.h"
 #include "expr/node.h"
 #include "expr/sygus_datatype.h"
+#include "smt/env_obj.h"
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
-
-class QuantifiersEngine;
 
 /**
  * Attribute for associating a function-to-synthesize with a first order
@@ -53,14 +53,16 @@ typedef expr::Attribute<SygusSynthFunVarListAttributeId, Node>
 namespace quantifiers {
 
 class SynthConjecture;
+class TermDbSygus;
 
-/** utility for constructing datatypes that correspond to syntactic restrictions,
-* and applying the deep embedding from Section 4 of Reynolds et al CAV 2015.
-*/
-class CegGrammarConstructor
+/**
+ * Utility for constructing datatypes that correspond to syntactic restrictions,
+ * and applying the deep embedding from Section 4 of Reynolds et al CAV 2015.
+ */
+class CegGrammarConstructor : protected EnvObj
 {
 public:
- CegGrammarConstructor(QuantifiersEngine* qe, SynthConjecture* p);
+ CegGrammarConstructor(Env& env, TermDbSygus* tds, SynthConjecture* p);
  ~CegGrammarConstructor() {}
  /** process
   *
@@ -88,9 +90,12 @@ public:
               const std::map<Node, Node>& templates,
               const std::map<Node, Node>& templates_arg,
               const std::vector<Node>& ebvl);
- /** is the syntax restricted? */
+
+ /** Is the syntax restricted? */
  bool isSyntaxRestricted() { return d_is_syntax_restricted; }
- /** make the default sygus datatype type corresponding to builtin type range
+
+ /**
+  * Make the default sygus datatype type corresponding to builtin type range
   * arguments:
   *   - bvl: the set of free variables to include in the grammar
   *   - fun: used for naming
@@ -107,21 +112,22 @@ public:
      TypeNode range,
      Node bvl,
      const std::string& fun,
-     std::map<TypeNode, std::unordered_set<Node, NodeHashFunction>>& extra_cons,
-     std::map<TypeNode, std::unordered_set<Node, NodeHashFunction>>&
-         exclude_cons,
-     std::map<TypeNode, std::unordered_set<Node, NodeHashFunction>>&
-         include_cons,
-     std::unordered_set<Node, NodeHashFunction>& term_irrelevant);
- /** make the default sygus datatype type corresponding to builtin type range */
+     std::map<TypeNode, std::unordered_set<Node>>& extra_cons,
+     std::map<TypeNode, std::unordered_set<Node>>& exclude_cons,
+     std::map<TypeNode, std::unordered_set<Node>>& include_cons,
+     std::unordered_set<Node>& term_irrelevant);
+
+ /**
+  * Make the default sygus datatype type corresponding to builtin type range.
+  */
  static TypeNode mkSygusDefaultType(TypeNode range,
                                     Node bvl,
                                     const std::string& fun)
  {
-   std::map<TypeNode, std::unordered_set<Node, NodeHashFunction>> extra_cons;
-   std::map<TypeNode, std::unordered_set<Node, NodeHashFunction>> exclude_cons;
-   std::map<TypeNode, std::unordered_set<Node, NodeHashFunction>> include_cons;
-   std::unordered_set<Node, NodeHashFunction> term_irrelevant;
+   std::map<TypeNode, std::unordered_set<Node>> extra_cons;
+   std::map<TypeNode, std::unordered_set<Node>> exclude_cons;
+   std::map<TypeNode, std::unordered_set<Node>> include_cons;
+   std::unordered_set<Node> term_irrelevant;
    return mkSygusDefaultType(range,
                              bvl,
                              fun,
@@ -130,6 +136,7 @@ public:
                              include_cons,
                              term_irrelevant);
   }
+
   /** make the sygus datatype type that encodes the solution space (lambda
   * templ_arg. templ[templ_arg]) where templ_arg
   * has syntactic restrictions encoded by sygus type templ_arg_sygus_type
@@ -137,14 +144,6 @@ public:
   *   fun is for naming
   */
   static TypeNode mkSygusTemplateType( Node templ, Node templ_arg, TypeNode templ_arg_sygus_type, Node bvl, const std::string& fun );
-  /**
-   * Returns the sygus variable list for function-to-synthesize variable f.
-   * These are the names of the arguments of f, which should be included in the
-   * grammar for f. This returns either the variable list set explicitly via the
-   * attribute SygusSynthFunVarListAttribute, or a fresh variable list of the
-   * proper type otherwise. It will return null if f is not a function.
-   */
-  static Node getSygusVarList(Node f);
   /**
    * Returns true iff there are syntax restrictions on the
    * functions-to-synthesize of sygus conjecture q.
@@ -169,8 +168,8 @@ public:
   Node convertToEmbedding(Node n);
 
  private:
-  /** reference to quantifier engine */
-  QuantifiersEngine * d_qe;
+  /** The sygus term database we are using */
+  TermDbSygus* d_tds;
   /** parent conjecture
   * This contains global information about the synthesis conjecture.
   */
@@ -183,9 +182,8 @@ public:
   /** is the syntax restricted? */
   bool d_is_syntax_restricted;
   /** collect terms */
-  void collectTerms(
-      Node n,
-      std::map<TypeNode, std::unordered_set<Node, NodeHashFunction>>& consts);
+  void collectTerms(Node n,
+                    std::map<TypeNode, std::unordered_set<Node>>& consts);
   //---------------- grammar construction
   /** A class for generating sygus datatypes */
   class SygusDatatypeGenerator
@@ -200,7 +198,6 @@ public:
     void addConstructor(Node op,
                         const std::string& name,
                         const std::vector<TypeNode>& consTypes,
-                        std::shared_ptr<SygusPrintCallback> spc = nullptr,
                         int weight = -1);
     /**
      * Possibly add a constructor to d_sdt, based on the criteria mentioned
@@ -208,23 +205,23 @@ public:
      */
     void addConstructor(Kind k,
                         const std::vector<TypeNode>& consTypes,
-                        std::shared_ptr<SygusPrintCallback> spc = nullptr,
                         int weight = -1);
     /** Should we include constructor with operator op? */
     bool shouldInclude(Node op) const;
     /** The constructors that should be excluded. */
-    std::unordered_set<Node, NodeHashFunction> d_exclude_cons;
+    std::unordered_set<Node> d_exclude_cons;
     /**
      * If this set is non-empty, then only include variables and constructors
      * from it.
      */
-    std::unordered_set<Node, NodeHashFunction> d_include_cons;
+    std::unordered_set<Node> d_include_cons;
     /** The sygus datatype we are generating. */
     SygusDatatype d_sdt;
   };
 
   // helper for mkSygusDefaultGrammar (makes unresolved type for mutually recursive datatype construction)
-  static TypeNode mkUnresolvedType(const std::string& name, std::set<Type>& unres);
+  static TypeNode mkUnresolvedType(const std::string& name,
+                                   std::set<TypeNode>& unres);
   // collect the list of types that depend on type range
   static void collectSygusGrammarTypesFor(TypeNode range,
                                           std::vector<TypeNode>& types);
@@ -237,15 +234,12 @@ public:
       TypeNode range,
       Node bvl,
       const std::string& fun,
-      std::map<TypeNode, std::unordered_set<Node, NodeHashFunction>>&
-          extra_cons,
-      std::map<TypeNode, std::unordered_set<Node, NodeHashFunction>>&
-          exclude_cons,
-      const std::map<TypeNode, std::unordered_set<Node, NodeHashFunction>>&
-          include_cons,
-      std::unordered_set<Node, NodeHashFunction>& term_irrelevant,
+      std::map<TypeNode, std::unordered_set<Node>>& extra_cons,
+      std::map<TypeNode, std::unordered_set<Node>>& exclude_cons,
+      const std::map<TypeNode, std::unordered_set<Node>>& include_cons,
+      std::unordered_set<Node>& term_irrelevant,
       std::vector<SygusDatatypeGenerator>& sdts,
-      std::set<Type>& unres);
+      std::set<TypeNode>& unres);
 
   // helper function for mkSygusTemplateType
   static TypeNode mkSygusTemplateTypeRec(Node templ,
@@ -260,18 +254,14 @@ public:
    * and an extra zero argument of that same type.  For example, for k = LEQ and
    * bArgType = Int, the operator will be lambda x : Int. x + 0.  Currently the
    * supported input types are Real (thus also Int) and BitVector.
-   *
-   * This method also creates a print callback for the operator, saved via the
-   * argument spc, if the caller wishes to not print the lambda.
    */
   static Node createLambdaWithZeroArg(Kind k,
-                                      TypeNode bArgType,
-                                      std::shared_ptr<SygusPrintCallback> spc);
+                                      TypeNode bArgType);
   //---------------- end grammar construction
 };
 
-} /* namespace CVC4::theory::quantifiers */
-} /* namespace CVC4::theory */
-} /* namespace CVC4 */
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5
 
 #endif

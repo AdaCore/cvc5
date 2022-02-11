@@ -1,32 +1,36 @@
-/*********************                                                        */
-/*! \file solver_state.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Tianyi Liang, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief The solver state of the theory of strings
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Tianyi Liang, Mathias Preiner
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * The solver state of the theory of strings.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__STRINGS__SOLVER_STATE_H
-#define CVC4__THEORY__STRINGS__SOLVER_STATE_H
+#ifndef CVC5__THEORY__STRINGS__SOLVER_STATE_H
+#define CVC5__THEORY__STRINGS__SOLVER_STATE_H
 
 #include <map>
 
+#include "context/cdlist.h"
 #include "context/context.h"
 #include "expr/node.h"
+#include "theory/strings/eqc_info.h"
+#include "theory/strings/infer_info.h"
 #include "theory/theory_model.h"
+#include "theory/theory_state.h"
 #include "theory/uf/equality_engine.h"
 #include "theory/valuation.h"
-#include "theory/strings/eqc_info.h"
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace strings {
 
@@ -39,66 +43,30 @@ namespace strings {
  * (2) Whether the set of assertions is in conflict.
  * (3) Equivalence class information as in the class above.
  */
-class SolverState
+class SolverState : public TheoryState
 {
   typedef context::CDList<Node> NodeList;
 
  public:
-  SolverState(context::Context* c,
-              context::UserContext* u,
-              eq::EqualityEngine& ee,
+  SolverState(Env& env,
               Valuation& v);
   ~SolverState();
-  /** Get the SAT context */
-  context::Context* getSatContext() const;
-  /** Get the user context */
-  context::UserContext* getUserContext() const;
-  //-------------------------------------- equality information
-  /**
-   * Get the representative of t in the equality engine of this class, or t
-   * itself if it is not registered as a term.
-   */
-  Node getRepresentative(Node t) const;
-  /** Is t registered as a term in the equality engine of this class? */
-  bool hasTerm(Node a) const;
-  /**
-   * Are a and b equal according to the equality engine of this class? Also
-   * returns true if a and b are identical.
-   */
-  bool areEqual(Node a, Node b) const;
-  /**
-   * Are a and b disequal according to the equality engine of this class? Also
-   * returns true if the representative of a and b are distinct constants.
-   */
-  bool areDisequal(Node a, Node b) const;
-  /** get equality engine */
-  eq::EqualityEngine* getEqualityEngine() const;
+  //-------------------------------------- disequality information
   /**
    * Get the list of disequalities that are currently asserted to the equality
    * engine.
    */
   const context::CDList<Node>& getDisequalityList() const;
-  //-------------------------------------- end equality information
-  //-------------------------------------- notifications for equalities
-  /** called when a new equivalence class is created */
-  void eqNotifyNewClass(TNode t);
-  /** called when two equivalence classes will merge */
-  void eqNotifyPreMerge(TNode t1, TNode t2);
-  /** called when two equivalence classes are made disequal */
-  void eqNotifyDisequal(TNode t1, TNode t2, TNode reason);
-  //-------------------------------------- end notifications for equalities
-  //------------------------------------------ conflicts
   /**
-   * Set that the current state of the solver is in conflict. This should be
-   * called immediately after a call to conflict(...) on the output channel of
-   * the theory of strings.
+   * notify the state that disequality (not (= t1 t2)) holds in the current
+   * context. This will be included in the return of the above method.
    */
-  void setConflict();
-  /** Are we currently in conflict? */
-  bool isInConflict() const;
-  /** set pending conflict
+  void addDisequality(TNode t1, TNode t2);
+  //-------------------------------------- end disequality information
+  //------------------------------------------ conflicts
+  /** set pending merge conflict
    *
-   * If conf is non-null, this is called when conf is a conjunction of literals
+   * This is called when conf is a conjunction of literals
    * that hold in the current context that are unsatisfiable. It is set as the
    * "pending conflict" to be processed as a conflict lemma on the output
    * channel of this class. It is not sent out immediately since it may require
@@ -106,9 +74,16 @@ class SolverState
    * during a merge operation, when the equality engine is not in a state to
    * provide explanations.
    */
-  void setPendingConflictWhen(Node conf);
+  void setPendingMergeConflict(Node conf, InferenceId id);
+  /**
+   * Set pending conflict, infer info version. Called when we are in conflict
+   * based on the inference ii. This generalizes the above method.
+   */
+  void setPendingConflict(InferInfo& ii);
+  /** return true if we have a pending conflict */
+  bool hasPendingConflict() const;
   /** get the pending conflict, or null if none exist */
-  Node getPendingConflict() const;
+  bool getPendingConflict(InferInfo& ii) const;
   //------------------------------------------ end conflicts
   /** get length with explanation
    *
@@ -149,19 +124,7 @@ class SolverState
    */
   EqcInfo* getOrMakeEqcInfo(Node eqc, bool doMake = true);
   /** Get pointer to the model object of the Valuation object */
-  TheoryModel* getModel() const;
-
-  /** add endpoints to eqc info
-   *
-   * This method is called when term t is the explanation for why equivalence
-   * class eqc may have a constant endpoint due to a concatentation term concat.
-   * For example, we may call this method on:
-   *   t := (str.++ x y), concat := (str.++ x y), eqc
-   * for some eqc that is currently equal to t. Another example is:
-   *   t := (str.in.re z (re.++ r s)), concat := (re.++ r s), eqc
-   * for some eqc that is currently equal to z.
-   */
-  void addEndpointsToEqcInfo(Node t, Node concat, Node eqc);
+  TheoryModel* getModel();
   /** Entailment check
    *
    * This calls entailmentCheck on the Valuation object of theory of strings.
@@ -182,29 +145,22 @@ class SolverState
  private:
   /** Common constants */
   Node d_zero;
-  /** Pointer to the SAT context object used by the theory of strings. */
-  context::Context* d_context;
-  /** Pointer to the user context object used by the theory of strings. */
-  context::UserContext* d_ucontext;
-  /** Reference to equality engine of the theory of strings. */
-  eq::EqualityEngine& d_ee;
+  Node d_false;
   /**
    * The (SAT-context-dependent) list of disequalities that have been asserted
    * to the equality engine above.
    */
   NodeList d_eeDisequalities;
-  /** Reference to the valuation of the theory of strings */
-  Valuation& d_valuation;
-  /** Are we in conflict? */
-  context::CDO<bool> d_conflict;
   /** The pending conflict if one exists */
-  context::CDO<Node> d_pendingConflict;
+  context::CDO<bool> d_pendingConflictSet;
+  /** The pending conflict, valid if the above flag is true */
+  InferInfo d_pendingConflict;
   /** Map from representatives to their equivalence class information */
   std::map<Node, EqcInfo*> d_eqcInfo;
-}; /* class TheoryStrings */
+};
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5
 
-#endif /* CVC4__THEORY__STRINGS__SOLVER_STATE_H */
+#endif /* CVC5__THEORY__STRINGS__SOLVER_STATE_H */

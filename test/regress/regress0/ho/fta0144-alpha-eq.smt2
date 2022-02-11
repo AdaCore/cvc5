@@ -1,6 +1,5 @@
-; COMMAND-LINE: --uf-ho
 ; EXPECT: unsat
-(set-logic ALL)
+(set-logic HO_ALL)
 (declare-sort Nat$ 0)
 (declare-sort Complex$ 0)
 (declare-sort Real_set$ 0)
@@ -14,7 +13,7 @@
 (declare-fun minus$ (Complex$ Complex$) Complex$)
 (declare-fun norm$a (Real) Real)
 (declare-fun zero$a () Nat$)
-(declare-fun member$ (Real Real_set$) Bool)
+(declare-fun set.member$ (Real Real_set$) Bool)
 (declare-fun minus$a (Nat$ Nat$) Nat$)
 (declare-fun thesis$ () Bool)
 (declare-fun collect$ ((-> Real Bool)) Real_set$)

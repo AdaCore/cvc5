@@ -1,15 +1,15 @@
 ; COMMAND-LINE: --incremental
 ; EXPECT: sat
 ; EXPECT: unsat
-(set-logic ALL_SUPPORTED)
+(set-logic ALL)
 (define-sort SetInt () (Set Int))
 (declare-fun a () (Set Int))
 (declare-fun b () (Set Int))
 (declare-fun x () Int)
-(assert (not (member x a)))
-(assert (member x (union a b)))
+(assert (not (set.member x a)))
+(assert (set.member x (set.union a b)))
 (check-sat)
 ;(get-model)
-(assert (not (member x b)))
+(assert (not (set.member x b)))
 (check-sat)
 (exit)

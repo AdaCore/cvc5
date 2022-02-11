@@ -1,26 +1,27 @@
-/*********************                                                        */
-/*! \file term_database_sygus.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Andres Noetzli, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief term database sygus class
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Andres Noetzli, Mathias Preiner
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Term database sygus class.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__TERM_DATABASE_SYGUS_H
-#define CVC4__THEORY__QUANTIFIERS__TERM_DATABASE_SYGUS_H
+#ifndef CVC5__THEORY__QUANTIFIERS__TERM_DATABASE_SYGUS_H
+#define CVC5__THEORY__QUANTIFIERS__TERM_DATABASE_SYGUS_H
 
 #include <unordered_set>
 
 #include "expr/dtype.h"
-#include "theory/evaluator.h"
+#include "smt/env_obj.h"
 #include "theory/quantifiers/extended_rewrite.h"
 #include "theory/quantifiers/fun_def_evaluator.h"
 #include "theory/quantifiers/sygus/sygus_eval_unfold.h"
@@ -28,7 +29,7 @@
 #include "theory/quantifiers/sygus/type_info.h"
 #include "theory/quantifiers/term_database.h"
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace quantifiers {
 
@@ -52,10 +53,13 @@ enum EnumeratorRole
 std::ostream& operator<<(std::ostream& os, EnumeratorRole r);
 
 // TODO :issue #1235 split and document this class
-class TermDbSygus {
+class TermDbSygus : protected EnvObj
+{
  public:
-  TermDbSygus(context::Context* c, QuantifiersEngine* qe);
+  TermDbSygus(Env& env, QuantifiersState& qs);
   ~TermDbSygus() {}
+  /** Finish init, which sets the inference manager */
+  void finishInit(QuantifiersInferenceManager* qim);
   /** Reset this utility */
   bool reset(Theory::Effort e);
   /** Identify this utility */
@@ -75,10 +79,6 @@ class TermDbSygus {
   //------------------------------utilities
   /** get the explanation utility */
   SygusExplain* getExplain() { return d_syexp.get(); }
-  /** get the extended rewrite utility */
-  ExtendedRewriter* getExtRewriter() { return d_ext_rw.get(); }
-  /** get the evaluator */
-  Evaluator* getEvaluator() { return d_eval.get(); }
   /** (recursive) function evaluator utility */
   FunDefEvaluator* getFunDefEvaluator() { return d_funDefEval.get(); }
   /** evaluation unfolding utility */
@@ -268,22 +268,6 @@ class TermDbSygus {
                        Node bn,
                        const std::vector<Node>& args,
                        bool tryEval = true);
-  /** evaluate with unfolding
-   *
-   * n is any term that may involve sygus evaluation functions. This function
-   * returns the result of unfolding the evaluation functions within n and
-   * rewriting the result. For example, if eval_A is the evaluation function
-   * for the datatype:
-   *   A -> C_0 | C_1 | C_x | C_+( C_A, C_A )
-   * corresponding to grammar:
-   *   A -> 0 | 1 | x | A + A
-   * then calling this function on eval( C_+( x, 1 ), 4 ) = y returns 5 = y.
-   * The node returned by this function is in (extended) rewritten form.
-   */
-  Node evaluateWithUnfolding(Node n);
-  /** same as above, but with a cache of visited nodes */
-  Node evaluateWithUnfolding(
-      Node n, std::unordered_map<Node, Node, NodeHashFunction>& visited);
   /** is evaluation point?
    *
    * Returns true if n is of the form eval( x, c1...cn ) for some variable x
@@ -310,18 +294,18 @@ class TermDbSygus {
 
   /** print to sygus stream n on trace c */
   static void toStreamSygus(const char* c, Node n);
-
+  /** print to sygus stream n on output out */
+  static void toStreamSygus(std::ostream& out, Node n);
+  
  private:
-  /** reference to the quantifiers engine */
-  QuantifiersEngine* d_quantEngine;
+  /** Reference to the quantifiers state */
+  QuantifiersState& d_qstate;
+  /** Pointer to the quantifiers inference manager */
+  QuantifiersInferenceManager* d_qim;
 
   //------------------------------utilities
   /** sygus explanation */
   std::unique_ptr<SygusExplain> d_syexp;
-  /** extended rewriter */
-  std::unique_ptr<ExtendedRewriter> d_ext_rw;
-  /** evaluator */
-  std::unique_ptr<Evaluator> d_eval;
   /** (recursive) function evaluator utility */
   std::unique_ptr<FunDefEvaluator> d_funDefEval;
   /** evaluation function unfolding utility */
@@ -450,17 +434,15 @@ class TermDbSygus {
 
   Node getSygusNormalized( Node n, std::map< TypeNode, int >& var_count, std::map< Node, Node >& subs );
   Node getNormalized(TypeNode t, Node prog);
-  unsigned getSygusTermSize( Node n );
   /** involves div-by-zero */
   bool involvesDivByZero( Node n );
   /** get anchor */
   static Node getAnchor( Node n );
   static unsigned getAnchorDepth( Node n );
-
 };
 
-}/* CVC4::theory::quantifiers namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace quantifiers
+}  // namespace theory
+}  // namespace cvc5
 
-#endif /* CVC4__THEORY__QUANTIFIERS__TERM_DATABASE_H */
+#endif /* CVC5__THEORY__QUANTIFIERS__TERM_DATABASE_H */

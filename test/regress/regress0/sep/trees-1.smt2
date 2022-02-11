@@ -1,10 +1,11 @@
-(set-logic QF_ALL_SUPPORTED)
+(set-logic QF_ALL)
 (set-info :status unsat)
 
 (declare-sort Loc 0)
 (declare-const loc0 Loc)
 
 (declare-datatypes ((Node 0)) (((node (data Int) (left Loc) (right Loc)))))
+(declare-heap (Loc Node))
 
 (declare-fun data0 () Node)
 
@@ -17,7 +18,7 @@
 (declare-const r Loc)
 
 (define-fun ten-tree0 ((x Loc) (d Int)) Bool 
-(or (and (_ emp Loc Node) (= x (as sep.nil Loc))) (and (sep (pto x (node d l r)) (and (_ emp Loc Node) (= l (as sep.nil Loc))) (and (_ emp Loc Node) (= r (as sep.nil Loc)))) (= dl (- d 10)) (= dr (+ d 10)))))
+(or (and sep.emp (= x (as sep.nil Loc))) (and (sep (pto x (node d l r)) (and sep.emp (= l (as sep.nil Loc))) (and sep.emp (= r (as sep.nil Loc)))) (= dl (- d 10)) (= dr (+ d 10)))))
 
 (declare-const dy Int)
 (declare-const y Loc)
@@ -25,7 +26,7 @@
 (declare-const z Loc)
 
 (define-fun ord-tree0 ((x Loc) (d Int)) Bool 
-(or (and (_ emp Loc Node) (= x (as sep.nil Loc))) (and (sep (pto x (node d y z)) (and (_ emp Loc Node) (= y (as sep.nil Loc))) (and (_ emp Loc Node) (= z (as sep.nil Loc)))) (<= dy d) (<= d dz))))
+(or (and sep.emp (= x (as sep.nil Loc))) (and (sep (pto x (node d y z)) (and sep.emp (= y (as sep.nil Loc))) (and sep.emp (= z (as sep.nil Loc)))) (<= dy d) (<= d dz))))
 
 ;------- f -------
 (assert (= y (as sep.nil Loc)))

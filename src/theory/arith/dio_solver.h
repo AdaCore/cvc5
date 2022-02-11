@@ -1,46 +1,46 @@
-/*********************                                                        */
-/*! \file dio_solver.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Tim King, Morgan Deters, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Diophantine equation solver
- **
- ** A Diophantine equation solver for the theory of arithmetic.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Tim King, Morgan Deters, Mathias Preiner
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * A Diophantine equation solver for the theory of arithmetic.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-
-#ifndef CVC4__THEORY__ARITH__DIO_SOLVER_H
-#define CVC4__THEORY__ARITH__DIO_SOLVER_H
+#ifndef CVC5__THEORY__ARITH__DIO_SOLVER_H
+#define CVC5__THEORY__ARITH__DIO_SOLVER_H
 
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "base/output.h"
 #include "context/cdlist.h"
 #include "context/cdmaybe.h"
 #include "context/cdo.h"
 #include "context/cdqueue.h"
-#include "context/context.h"
+#include "smt/env_obj.h"
 #include "theory/arith/normal_form.h"
-#include "theory/arith/partial_model.h"
 #include "util/rational.h"
-#include "util/statistics_registry.h"
+#include "util/statistics_stats.h"
 
-namespace CVC4 {
+namespace cvc5 {
+namespace context {
+class Context;
+}
 namespace theory {
 namespace arith {
 
-class DioSolver {
-private:
+class DioSolver : protected EnvObj
+{
+ private:
   typedef size_t TrailIndex;
   typedef size_t InputConstraintIndex;
   typedef size_t SubIndex;
@@ -70,7 +70,8 @@ private:
    * We maintain a map from the variables associated with proofs to an input constraint.
    * These variables can then be used in polynomial manipulations.
    */
-  typedef std::unordered_map<Node, InputConstraintIndex, NodeHashFunction> NodeToInputConstraintIndexMap;
+  typedef std::unordered_map<Node, InputConstraintIndex>
+      NodeToInputConstraintIndexMap;
   NodeToInputConstraintIndexMap d_varToInputConstraintMap;
 
   Node proofVariableToReason(const Variable& v) const{
@@ -177,11 +178,12 @@ private:
 public:
 
   /** Construct a Diophantine equation solver with the given context. */
-  DioSolver(context::Context* ctxt);
+ DioSolver(Env& env);
 
-  /** Returns true if the substitutions use no new variables. */
-  bool hasMorePureSubstitutions() const{
-    return d_pureSubstitionIter < d_lastPureSubstitution;
+ /** Returns true if the substitutions use no new variables. */
+ bool hasMorePureSubstitutions() const
+ {
+   return d_pureSubstitionIter < d_lastPureSubstitution;
   }
 
   Node nextPureSubstitution();
@@ -381,9 +383,6 @@ private:
    */
   SumPair purifyIndex(TrailIndex i);
 
-
-  void debugPrintTrail(TrailIndex i) const;
-
 public:
   bool hasMoreDecompositionLemmas() const{
     return !d_decompositionLemmaQueue.empty();
@@ -414,14 +413,13 @@ public:
     TimerStat d_cutTimer;
 
     Statistics();
-    ~Statistics();
   };
 
   Statistics d_statistics;
-};/* class DioSolver */
+}; /* class DioSolver */
 
-}/* CVC4::theory::arith namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace arith
+}  // namespace theory
+}  // namespace cvc5
 
-#endif /* CVC4__THEORY__ARITH__DIO_SOLVER_H */
+#endif /* CVC5__THEORY__ARITH__DIO_SOLVER_H */

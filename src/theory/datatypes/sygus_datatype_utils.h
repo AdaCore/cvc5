@@ -1,21 +1,22 @@
-/*********************                                                        */
-/*! \file sygus_datatype_utils.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Util functions for sygus datatypes
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Util functions for sygus datatypes.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__STRINGS__SYGUS_DATATYPE_UTILS_H
-#define CVC4__THEORY__STRINGS__SYGUS_DATATYPE_UTILS_H
+#ifndef CVC5__THEORY__STRINGS__SYGUS_DATATYPE_UTILS_H
+#define CVC5__THEORY__STRINGS__SYGUS_DATATYPE_UTILS_H
 
 #include <vector>
 
@@ -24,7 +25,7 @@
 #include "expr/node_manager_attributes.h"
 #include "theory/datatypes/theory_datatypes_utils.h"
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 
 // ----------------------- sygus datatype attributes
@@ -85,11 +86,6 @@ Kind getOperatorKindForSygusBuiltin(Node op);
  * otherwise k itself.
  */
 Kind getEliminateKind(Kind k);
-/**
- * Returns a version of n where all partial functions such as bvudiv
- * have been replaced by their total versions like bvudiv_total.
- */
-Node eliminatePartialOperators(Node n);
 /** make sygus term
  *
  * This function returns a builtin term f( children[0], ..., children[n] )
@@ -113,7 +109,7 @@ Node mkSygusTerm(Node op,
                  const std::vector<Node>& children,
                  bool doBetaReduction = true);
 /**
- * n is a builtin term that is an application of operator op.
+ * n is a builtin term that is a (rewritten) application of operator op.
  *
  * This returns an n' such that (eval n args) is n', where n' is a instance of
  * n for the appropriate substitution.
@@ -122,18 +118,18 @@ Node mkSygusTerm(Node op,
  * say we have grammar:
  *   A -> A+A | A+x | A+(x+y) | y
  * These lead to constructors with sygus ops:
- *   C1 / (lambda w1 w2. w1+w2)
- *   C2 / (lambda w1. w1+x)
- *   C3 / (lambda w1. w1+(x+y))
- *   C4 / y
+ *   C1 / L1 where L1 is (lambda w1 w2. w1+w2)
+ *   C2 / L2 where L2 is (lambda w1. w1+x)
+ *   C3 / L3 where L3 is (lambda w1. w1+(x+y))
+ *   C4 / L4 where L4 is y
  * Examples of calling this function:
- *   applySygusArgs( dt, C1, (APPLY_UF (lambda w1 w2. w1+w2) t1 t2), { 3, 5 } )
+ *   applySygusArgs( dt, L1, (APPLY_UF L1 t1 t2), { 3, 5 } )
  *     ... returns (APPLY_UF (lambda w1 w2. w1+w2) t1 t2).
- *   applySygusArgs( dt, C2, (APPLY_UF (lambda w1. w1+x) t1), { 3, 5 } )
+ *   applySygusArgs( dt, L2, (APPLY_UF L2 t1), { 3, 5 } )
  *     ... returns (APPLY_UF (lambda w1. w1+3) t1).
- *   applySygusArgs( dt, C3, (APPLY_UF (lambda w1. w1+(x+y)) t1), { 3, 5 } )
+ *   applySygusArgs( dt, L3, (APPLY_UF L3 t1), { 3, 5 } )
  *     ... returns (APPLY_UF (lambda w1. w1+(3+5)) t1).
- *   applySygusArgs( dt, C4, y, { 3, 5 } )
+ *   applySygusArgs( dt, L4, L4, { 3, 5 } )
  *     ... returns 5.
  * Notice the attribute SygusVarFreeAttribute is applied to C1, C2, C3, C4,
  * to cache the results of whether the evaluation of this constructor needs
@@ -145,7 +141,7 @@ Node applySygusArgs(const DType& dt,
                     const std::vector<Node>& args);
 /** Sygus to builtin
  *
- * This method converts a constant term of SyGuS datatype type to its builtin
+ * This method converts a term n of SyGuS datatype type to its builtin
  * equivalent. For example, given input C_*( C_x(), C_y() ), this method returns
  * x*y, assuming C_+, C_x, and C_y have sygus operators *, x, and y
  * respectively.
@@ -154,30 +150,20 @@ Node applySygusArgs(const DType& dt,
  * that was provided. This includes the use of defined functions. This argument
  * should typically be false, unless we are e.g. exporting the value of the
  * term as a final solution.
+ *
+ * If n is not constant, then its non-constant subterms that have sygus
+ * datatype types are replaced by fresh variables (of the same name, if that
+ * subterm is a variable, and having arbitrary name otherwise).
  */
-Node sygusToBuiltin(Node c, bool isExternal = false);
-/** Sygus to builtin eval
- *
- * This method returns the rewritten form of (DT_SYGUS_EVAL n args). Notice that
- * n does not necessarily need to be a constant.
- *
- * It does so by (1) converting constant subterms of n to builtin terms and
- * evaluating them on the arguments args, (2) unfolding non-constant
- * applications of sygus constructors in n with respect to args and (3)
- * converting all other non-constant subterms of n to applications of
- * DT_SYGUS_EVAL.
- *
- * For example, if
- *   n = C_+( C_*( C_x(), C_y() ), n' ), and args = { 3, 4 }
- * where n' is a variable, then this method returns:
- *   12 + (DT_SYGUS_EVAL n' 3 4)
- * Notice that the subterm C_*( C_x(), C_y() ) is converted to its builtin
- * equivalent x*y and evaluated under the substition { x -> 3, x -> 4 } giving
- * 12. The subterm n' is non-constant and thus we return its evaluation under
- * 3,4, giving the term (DT_SYGUS_EVAL n' 3 4). Since the top-level constructor
- * is C_+, these terms are added together to give the result.
+Node sygusToBuiltin(Node n, bool isExternal = false);
+
+/**
+ * Builtin variable to sygus. Converts from builtin variables introduced by
+ * the method above to their source, which is a sygus variable. It should
+ * be the case that v is a variable introduced by the above method, or otherwise
+ * null is returned.
  */
-Node sygusToBuiltinEval(Node n, const std::vector<Node>& args);
+Node builtinVarToSygus(Node v);
 
 /** Get free symbols in a sygus datatype type
  *
@@ -188,8 +174,7 @@ Node sygusToBuiltinEval(Node n, const std::vector<Node>& args);
  * We have that { a, b, c, e } are added to syms. Notice that expr::getSymbols
  * excludes variables whose kind is BOUND_VARIABLE.
  */
-void getFreeSymbolsSygusType(TypeNode sdt,
-                             std::unordered_set<Node, NodeHashFunction>& syms);
+void getFreeSymbolsSygusType(TypeNode sdt, std::unordered_set<Node>& syms);
 
 /** Substitute and generalize a sygus datatype type
  *
@@ -219,11 +204,32 @@ TypeNode substituteAndGeneralizeSygusType(TypeNode sdt,
                                           const std::vector<Node>& syms,
                                           const std::vector<Node>& vars);
 
+/**
+ * Get SyGuS term size, which is based on the weight of constructor applications
+ * in n.
+ */
+unsigned getSygusTermSize(Node n);
+
+/**
+ * Set expanded definition form of sygus op to eop. This is called when
+ * we require associating a sygus operator op to its expanded form, which
+ * replaces user-defined functions with their definitions. This allows
+ * the utilities above to consider op to be the original form, which is
+ * printed in the final solution (see isExternal to sygusToBuiltin above),
+ * whereas the internal solver will reason about eop.
+ */
+void setExpandedDefinitionForm(Node op, Node eop);
+/**
+ * Get the expanded definition form of sygus operator op, returns the
+ * expanded form if the above method has been called for op, or returns op
+ * otherwise.
+ */
+Node getExpandedDefinitionForm(Node op);
 // ------------------------ end sygus utils
 
 }  // namespace utils
 }  // namespace datatypes
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5
 
 #endif

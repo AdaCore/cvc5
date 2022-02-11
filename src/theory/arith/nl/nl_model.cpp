@@ -1,55 +1,54 @@
-/*********************                                                        */
-/*! \file nl_model.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Tim King, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Model object for the non-linear extension class
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Gereon Kremer, Tim King
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Model object for the non-linear extension class.
+ */
 
 #include "theory/arith/nl/nl_model.h"
 
 #include "expr/node_algorithm.h"
 #include "options/arith_options.h"
+#include "options/smt_options.h"
+#include "options/theory_options.h"
 #include "theory/arith/arith_msum.h"
 #include "theory/arith/arith_utilities.h"
+#include "theory/arith/nl/nl_lemma_utils.h"
+#include "theory/theory_model.h"
 #include "theory/rewriter.h"
 
-using namespace CVC4::kind;
+using namespace cvc5::kind;
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace arith {
 namespace nl {
 
-NlModel::NlModel(context::Context* c) : d_used_approx(false)
+NlModel::NlModel(Env& env) : EnvObj(env), d_used_approx(false)
 {
   d_true = NodeManager::currentNM()->mkConst(true);
   d_false = NodeManager::currentNM()->mkConst(false);
-  d_zero = NodeManager::currentNM()->mkConst(Rational(0));
-  d_one = NodeManager::currentNM()->mkConst(Rational(1));
-  d_two = NodeManager::currentNM()->mkConst(Rational(2));
+  d_zero = NodeManager::currentNM()->mkConst(CONST_RATIONAL, Rational(0));
+  d_one = NodeManager::currentNM()->mkConst(CONST_RATIONAL, Rational(1));
+  d_two = NodeManager::currentNM()->mkConst(CONST_RATIONAL, Rational(2));
 }
 
 NlModel::~NlModel() {}
 
-void NlModel::reset(TheoryModel* m, std::map<Node, Node>& arithModel)
+void NlModel::reset(TheoryModel* m, const std::map<Node, Node>& arithModel)
 {
   d_model = m;
-  d_mv[0].clear();
-  d_mv[1].clear();
-  d_arithVal.clear();
-  // process arithModel
-  std::map<Node, Node>::iterator it;
-  for (const std::pair<const Node, Node>& m2 : arithModel)
-  {
-    d_arithVal[m2.first] = m2.second;
-  }
+  d_concreteModelCache.clear();
+  d_abstractModelCache.clear();
+  d_arithVal = arithModel;
 }
 
 void NlModel::resetCheck()
@@ -57,46 +56,43 @@ void NlModel::resetCheck()
   d_used_approx = false;
   d_check_model_solved.clear();
   d_check_model_bounds.clear();
-  d_check_model_vars.clear();
-  d_check_model_subs.clear();
+  d_check_model_witnesses.clear();
+  d_substitutions.clear();
 }
 
-Node NlModel::computeConcreteModelValue(Node n)
+Node NlModel::computeConcreteModelValue(TNode n)
 {
   return computeModelValue(n, true);
 }
 
-Node NlModel::computeAbstractModelValue(Node n)
+Node NlModel::computeAbstractModelValue(TNode n)
 {
   return computeModelValue(n, false);
 }
 
-Node NlModel::computeModelValue(Node n, bool isConcrete)
+Node NlModel::computeModelValue(TNode n, bool isConcrete)
 {
-  unsigned index = isConcrete ? 0 : 1;
-  std::map<Node, Node>::iterator it = d_mv[index].find(n);
-  if (it != d_mv[index].end())
+  auto& cache = isConcrete ? d_concreteModelCache : d_abstractModelCache;
+  if (auto it = cache.find(n); it != cache.end())
   {
     return it->second;
   }
-  Trace("nl-ext-mv-debug") << "computeModelValue " << n << ", index=" << index
-                           << std::endl;
+  Trace("nl-ext-mv-debug") << "computeModelValue " << n
+                           << ", isConcrete=" << isConcrete << std::endl;
   Node ret;
-  Kind nk = n.getKind();
   if (n.isConst())
   {
     ret = n;
   }
-  else if (!isConcrete && hasTerm(n))
+  else if (!isConcrete && hasLinearModelValue(n, ret))
   {
     // use model value for abstraction
-    ret = getRepresentative(n);
   }
   else if (n.getNumChildren() == 0)
   {
     // we are interested in the exact value of PI, which cannot be computed.
     // hence, we return PI itself when asked for the concrete value.
-    if (nk == PI)
+    if (n.getKind() == PI)
     {
       ret = n;
     }
@@ -108,7 +104,7 @@ Node NlModel::computeModelValue(Node n, bool isConcrete)
   else
   {
     // otherwise, compute true value
-    TheoryId ctid = theory::kindToTheoryId(nk);
+    TheoryId ctid = theory::kindToTheoryId(n.getKind());
     if (ctid != THEORY_ARITH && ctid != THEORY_BOOL && ctid != THEORY_BUILTIN)
     {
       // we directly look up terms not belonging to arithmetic
@@ -119,61 +115,28 @@ Node NlModel::computeModelValue(Node n, bool isConcrete)
       std::vector<Node> children;
       if (n.getMetaKind() == metakind::PARAMETERIZED)
       {
-        children.push_back(n.getOperator());
+        children.emplace_back(n.getOperator());
       }
-      for (unsigned i = 0, nchild = n.getNumChildren(); i < nchild; i++)
+      for (size_t i = 0, nchild = n.getNumChildren(); i < nchild; i++)
       {
-        Node mc = computeModelValue(n[i], isConcrete);
-        children.push_back(mc);
+        children.emplace_back(computeModelValue(n[i], isConcrete));
       }
-      ret = NodeManager::currentNM()->mkNode(nk, children);
-      ret = Rewriter::rewrite(ret);
+      ret = NodeManager::currentNM()->mkNode(n.getKind(), children);
+      ret = rewrite(ret);
     }
   }
-  Trace("nl-ext-mv-debug") << "computed " << (index == 0 ? "M" : "M_A") << "["
+  Trace("nl-ext-mv-debug") << "computed " << (isConcrete ? "M" : "M_A") << "["
                            << n << "] = " << ret << std::endl;
-  d_mv[index][n] = ret;
+  cache[n] = ret;
   return ret;
 }
 
-bool NlModel::hasTerm(Node n) const
+int NlModel::compare(TNode i, TNode j, bool isConcrete, bool isAbsolute)
 {
-  return d_arithVal.find(n) != d_arithVal.end();
-}
-
-Node NlModel::getRepresentative(Node n) const
-{
-  if (n.isConst())
+  if (i == j)
   {
-    return n;
+    return 0;
   }
-  std::map<Node, Node>::const_iterator it = d_arithVal.find(n);
-  if (it != d_arithVal.end())
-  {
-    AlwaysAssert(it->second.isConst());
-    return it->second;
-  }
-  return d_model->getRepresentative(n);
-}
-
-Node NlModel::getValueInternal(Node n) const
-{
-  if (n.isConst())
-  {
-    return n;
-  }
-  std::map<Node, Node>::const_iterator it = d_arithVal.find(n);
-  if (it != d_arithVal.end())
-  {
-    AlwaysAssert(it->second.isConst());
-    return it->second;
-  }
-  // It is unconstrained in the model, return 0.
-  return d_zero;
-}
-
-int NlModel::compare(Node i, Node j, bool isConcrete, bool isAbsolute)
-{
   Node ci = computeModelValue(i, isConcrete);
   Node cj = computeModelValue(j, isConcrete);
   if (ci.isConst())
@@ -187,37 +150,32 @@ int NlModel::compare(Node i, Node j, bool isConcrete, bool isAbsolute)
   return cj.isConst() ? -1 : 0;
 }
 
-int NlModel::compareValue(Node i, Node j, bool isAbsolute) const
+int NlModel::compareValue(TNode i, TNode j, bool isAbsolute) const
 {
   Assert(i.isConst() && j.isConst());
-  int ret;
   if (i == j)
   {
-    ret = 0;
+    return 0;
   }
-  else if (!isAbsolute)
+  if (!isAbsolute)
   {
-    ret = i.getConst<Rational>() < j.getConst<Rational>() ? 1 : -1;
+    return i.getConst<Rational>() < j.getConst<Rational>() ? -1 : 1;
   }
-  else
+  Rational iabs = i.getConst<Rational>().abs();
+  Rational jabs = j.getConst<Rational>().abs();
+  if (iabs == jabs)
   {
-    ret = (i.getConst<Rational>().abs() == j.getConst<Rational>().abs()
-               ? 0
-               : (i.getConst<Rational>().abs() < j.getConst<Rational>().abs()
-                      ? 1
-                      : -1));
+    return 0;
   }
-  return ret;
+  return iabs < jabs ? -1 : 1;
 }
 
 bool NlModel::checkModel(const std::vector<Node>& assertions,
-                         const std::vector<Node>& false_asserts,
                          unsigned d,
-                         std::vector<NlLemma>& lemmas,
-                         std::vector<Node>& gs)
+                         std::vector<NlLemma>& lemmas)
 {
   Trace("nl-ext-cm-debug") << "  solve for equalities..." << std::endl;
-  for (const Node& atom : false_asserts)
+  for (const Node& atom : assertions)
   {
     // see if it corresponds to a univariate polynomial equation of degree two
     if (atom.getKind() == EQUAL)
@@ -234,7 +192,7 @@ bool NlModel::checkModel(const std::vector<Node>& assertions,
   // all remaining variables are constrained to their exact model values
   Trace("nl-ext-cm-debug") << "  set exact bounds for remaining variables..."
                            << std::endl;
-  std::unordered_set<TNode, TNodeHashFunction> visited;
+  std::unordered_set<TNode> visited;
   std::vector<TNode> visit;
   TNode cur;
   for (const Node& a : assertions)
@@ -247,22 +205,25 @@ bool NlModel::checkModel(const std::vector<Node>& assertions,
       if (visited.find(cur) == visited.end())
       {
         visited.insert(cur);
-        if (cur.getType().isReal() && !cur.isConst())
+        if (cur.getType().isRealOrInt() && !cur.isConst())
         {
           Kind k = cur.getKind();
           if (k != MULT && k != PLUS && k != NONLINEAR_MULT
               && !isTranscendentalKind(k))
           {
             // if we have not set an approximate bound for it
-            if (!hasCheckModelAssignment(cur))
+            if (!hasAssignment(cur))
             {
               // set its exact model value in the substitution
               Node curv = computeConcreteModelValue(cur);
-              Trace("nl-ext-cm")
-                  << "check-model-bound : exact : " << cur << " = ";
-              printRationalApprox("nl-ext-cm", curv);
-              Trace("nl-ext-cm") << std::endl;
-              bool ret = addCheckModelSubstitution(cur, curv);
+              if (Trace.isOn("nl-ext-cm"))
+              {
+                Trace("nl-ext-cm")
+                    << "check-model-bound : exact : " << cur << " = ";
+                printRationalApprox("nl-ext-cm", curv);
+                Trace("nl-ext-cm") << std::endl;
+              }
+              bool ret = addSubstitution(cur, curv);
               AlwaysAssert(ret);
             }
           }
@@ -279,19 +240,13 @@ bool NlModel::checkModel(const std::vector<Node>& assertions,
   std::vector<Node> check_assertions;
   for (const Node& a : assertions)
   {
-    // don't have to check tautological literals
-    if (d_tautology.find(a) != d_tautology.end())
-    {
-      continue;
-    }
     if (d_check_model_solved.find(a) == d_check_model_solved.end())
     {
       Node av = a;
       // apply the substitution to a
-      if (!d_check_model_vars.empty())
+      if (!d_substitutions.empty())
       {
-        av = arithSubstitute(av, d_check_model_vars, d_check_model_subs);
-        av = Rewriter::rewrite(av);
+        av = rewrite(arithSubstitute(av, d_substitutions));
       }
       // simple check literal
       if (!simpleCheckModelLit(av))
@@ -312,37 +267,16 @@ bool NlModel::checkModel(const std::vector<Node>& assertions,
     return false;
   }
   Trace("nl-ext-cm") << "...simple check succeeded!" << std::endl;
-
-  // must assert and re-check if produce models is true
-  if (options::produceModels())
-  {
-    NodeManager* nm = NodeManager::currentNM();
-    // model guard whose semantics is "the model we constructed holds"
-    Node mg = nm->mkSkolem("model", nm->booleanType());
-    gs.push_back(mg);
-    // assert the constructed model as assertions
-    for (const std::pair<const Node, std::pair<Node, Node>> cb :
-         d_check_model_bounds)
-    {
-      Node l = cb.second.first;
-      Node u = cb.second.second;
-      Node v = cb.first;
-      Node pred = nm->mkNode(AND, nm->mkNode(GEQ, v, l), nm->mkNode(GEQ, u, v));
-      pred = nm->mkNode(OR, mg.negate(), pred);
-      lemmas.push_back(pred);
-    }
-  }
   return true;
 }
 
-bool NlModel::addCheckModelSubstitution(TNode v, TNode s)
+bool NlModel::addSubstitution(TNode v, TNode s)
 {
   // should not substitute the same variable twice
   Trace("nl-ext-model") << "* check model substitution : " << v << " -> " << s
                         << std::endl;
   // should not set exact bound more than once
-  if (std::find(d_check_model_vars.begin(), d_check_model_vars.end(), v)
-      != d_check_model_vars.end())
+  if (d_substitutions.contains(v))
   {
     Trace("nl-ext-model") << "...ERROR: already has value." << std::endl;
     // this should never happen since substitutions should be applied eagerly
@@ -363,37 +297,34 @@ bool NlModel::addCheckModelSubstitution(TNode v, TNode s)
       return false;
     }
   }
-  std::vector<Node> varsTmp;
-  varsTmp.push_back(v);
-  std::vector<Node> subsTmp;
-  subsTmp.push_back(s);
-  for (unsigned i = 0, size = d_check_model_subs.size(); i < size; i++)
+  Assert(d_check_model_witnesses.find(v) == d_check_model_witnesses.end())
+      << "We tried to add a substitution where we already had a witness term."
+      << std::endl;
+  Subs tmp;
+  tmp.add(v, s);
+  for (auto& sub : d_substitutions.d_subs)
   {
-    Node ms = d_check_model_subs[i];
-    Node mss = arithSubstitute(ms, varsTmp, subsTmp);
-    if (mss != ms)
+    Node ms = arithSubstitute(sub, tmp);
+    if (ms != sub)
     {
-      mss = Rewriter::rewrite(mss);
+      sub = rewrite(ms);
     }
-    d_check_model_subs[i] = mss;
   }
-  d_check_model_vars.push_back(v);
-  d_check_model_subs.push_back(s);
+  d_substitutions.add(v, s);
   return true;
 }
 
-bool NlModel::addCheckModelBound(TNode v, TNode l, TNode u)
+bool NlModel::addBound(TNode v, TNode l, TNode u)
 {
   Trace("nl-ext-model") << "* check model bound : " << v << " -> [" << l << " "
                         << u << "]" << std::endl;
   if (l == u)
   {
     // bound is exact, can add as substitution
-    return addCheckModelSubstitution(v, l);
+    return addSubstitution(v, l);
   }
   // should not set a bound for a value that is exact
-  if (std::find(d_check_model_vars.begin(), d_check_model_vars.end(), v)
-      != d_check_model_vars.end())
+  if (d_substitutions.contains(v))
   {
     Trace("nl-ext-model")
         << "...ERROR: setting bound for variable that already has exact value."
@@ -416,79 +347,41 @@ bool NlModel::addCheckModelBound(TNode v, TNode l, TNode u)
   return true;
 }
 
-bool NlModel::hasCheckModelAssignment(Node v) const
+bool NlModel::addWitness(TNode v, TNode w)
 {
-  if (d_check_model_bounds.find(v) != d_check_model_bounds.end())
+  Trace("nl-ext-model") << "* check model witness : " << v << " -> " << w
+                        << std::endl;
+  // should not set a witness for a value that is already set
+  if (d_substitutions.contains(v))
   {
-    return true;
+    Trace("nl-ext-model") << "...ERROR: setting witness for variable that "
+                             "already has a constant value."
+                          << std::endl;
+    Assert(false);
+    return false;
   }
-  return std::find(d_check_model_vars.begin(), d_check_model_vars.end(), v)
-         != d_check_model_vars.end();
+  d_check_model_witnesses.emplace(v, w);
+  return true;
 }
 
 void NlModel::setUsedApproximate() { d_used_approx = true; }
 
 bool NlModel::usedApproximate() const { return d_used_approx; }
 
-void NlModel::addTautology(Node n)
-{
-  // ensure rewritten
-  n = Rewriter::rewrite(n);
-  std::unordered_set<TNode, TNodeHashFunction> visited;
-  std::vector<TNode> visit;
-  TNode cur;
-  visit.push_back(n);
-  do
-  {
-    cur = visit.back();
-    visit.pop_back();
-    if (visited.find(cur) == visited.end())
-    {
-      visited.insert(cur);
-      if (cur.getKind() == AND)
-      {
-        // children of AND are also implied
-        for (const Node& cn : cur)
-        {
-          visit.push_back(cn);
-        }
-      }
-      else
-      {
-        // is this an arithmetic literal?
-        Node atom = cur.getKind() == NOT ? cur[0] : cur;
-        if ((atom.getKind() == EQUAL && atom[0].getType().isReal())
-            || atom.getKind() == LEQ)
-        {
-          // Add to tautological literals if it does not contain
-          // non-linear multiplication. We cannot consider literals
-          // with non-linear multiplication to be tautological since this
-          // model object is responsible for checking whether they hold.
-          // (TODO, cvc4-projects #113: revisit this).
-          if (!expr::hasSubtermKind(NONLINEAR_MULT, atom))
-          {
-            Trace("nl-taut") << "Tautological literal: " << atom << std::endl;
-            d_tautology.insert(cur);
-          }
-        }
-      }
-    }
-  } while (!visit.empty());
-}
-
 bool NlModel::solveEqualitySimple(Node eq,
                                   unsigned d,
                                   std::vector<NlLemma>& lemmas)
 {
   Node seq = eq;
-  if (!d_check_model_vars.empty())
+  if (!d_substitutions.empty())
   {
-    seq = arithSubstitute(eq, d_check_model_vars, d_check_model_subs);
-    seq = Rewriter::rewrite(seq);
+    seq = arithSubstitute(eq, d_substitutions);
+    seq = rewrite(seq);
     if (seq.isConst())
     {
       if (seq.getConst<bool>())
       {
+        // already true
         d_check_model_solved[eq] = Node::null();
         return true;
       }
@@ -513,10 +406,10 @@ bool NlModel::solveEqualitySimple(Node eq,
   NodeManager* nm = NodeManager::currentNM();
   // the list of variables that occur as a monomial in msum, and whose value
   // is so far unconstrained in the model.
-  std::unordered_set<Node, NodeHashFunction> unc_vars;
+  std::unordered_set<Node> unc_vars;
   // the list of variables that occur as a factor in a monomial, and whose
   // value is so far unconstrained in the model.
-  std::unordered_set<Node, NodeHashFunction> unc_vars_factor;
+  std::unordered_set<Node> unc_vars_factor;
   for (std::pair<const Node, Node>& m : msum)
   {
     Node v = m.first;
@@ -579,7 +472,7 @@ bool NlModel::solveEqualitySimple(Node eq,
     {
       Trace("nl-ext-cm-debug") << "check subs var : " << uv << std::endl;
       // cannot already have a bound
-      if (uv.isVar() && !hasCheckModelAssignment(uv))
+      if (uv.isVar() && !hasAssignment(uv))
       {
         Node slv;
         Node veqc;
@@ -594,7 +487,7 @@ bool NlModel::solveEqualitySimple(Node eq,
           {
             Trace("nl-ext-cm")
                 << "check-model-subs : " << uv << " -> " << slv << std::endl;
-            bool ret = addCheckModelSubstitution(uv, slv);
+            bool ret = addSubstitution(uv, slv);
             if (ret)
             {
               Trace("nl-ext-cms") << "...success, model substitution " << uv
@@ -611,13 +504,16 @@ bool NlModel::solveEqualitySimple(Node eq,
     {
       Trace("nl-ext-cm-debug") << "check set var : " << uvf << std::endl;
       // cannot already have a bound
-      if (uvf.isVar() && !hasCheckModelAssignment(uvf))
+      if (uvf.isVar() && !hasAssignment(uvf))
       {
         Node uvfv = computeConcreteModelValue(uvf);
-        Trace("nl-ext-cm") << "check-model-bound : exact : " << uvf << " = ";
-        printRationalApprox("nl-ext-cm", uvfv);
-        Trace("nl-ext-cm") << std::endl;
-        bool ret = addCheckModelSubstitution(uvf, uvfv);
+        if (Trace.isOn("nl-ext-cm"))
+        {
+          Trace("nl-ext-cm") << "check-model-bound : exact : " << uvf << " = ";
+          printRationalApprox("nl-ext-cm", uvfv);
+          Trace("nl-ext-cm") << std::endl;
+        }
+        bool ret = addSubstitution(uvf, uvfv);
         // recurse
         return ret ? solveEqualitySimple(eq, d, lemmas) : false;
       }
@@ -642,11 +538,15 @@ bool NlModel::solveEqualitySimple(Node eq,
       Assert(false);
       return false;
     }
-    Node val = nm->mkConst(-c.getConst<Rational>() / b.getConst<Rational>());
-    Trace("nl-ext-cm") << "check-model-bound : exact : " << var << " = ";
-    printRationalApprox("nl-ext-cm", val);
-    Trace("nl-ext-cm") << std::endl;
-    bool ret = addCheckModelSubstitution(var, val);
+    Node val = nm->mkConst(CONST_RATIONAL,
+                           -c.getConst<Rational>() / b.getConst<Rational>());
+    if (Trace.isOn("nl-ext-cm"))
+    {
+      Trace("nl-ext-cm") << "check-model-bound : exact : " << var << " = ";
+      printRationalApprox("nl-ext-cm", val);
+      Trace("nl-ext-cm") << std::endl;
+    }
+    bool ret = addSubstitution(var, val);
     if (ret)
     {
       Trace("nl-ext-cms") << "...success, solved linear." << std::endl;
@@ -654,109 +554,7 @@ bool NlModel::solveEqualitySimple(Node eq,
     }
     return ret;
   }
-  Trace("nl-ext-quad") << "Solve quadratic : " << seq << std::endl;
-  Trace("nl-ext-quad") << "  a : " << a << std::endl;
-  Trace("nl-ext-quad") << "  b : " << b << std::endl;
-  Trace("nl-ext-quad") << "  c : " << c << std::endl;
-  Node two_a = nm->mkNode(MULT, d_two, a);
-  two_a = Rewriter::rewrite(two_a);
-  Node sqrt_val = nm->mkNode(
-      MINUS, nm->mkNode(MULT, b, b), nm->mkNode(MULT, d_two, two_a, c));
-  sqrt_val = Rewriter::rewrite(sqrt_val);
-  Trace("nl-ext-quad") << "Will approximate sqrt " << sqrt_val << std::endl;
-  Assert(sqrt_val.isConst());
-  // if it is negative, then we are in conflict
-  if (sqrt_val.getConst<Rational>().sgn() == -1)
-  {
-    Node conf = seq.negate();
-    Trace("nl-ext-lemma") << "NlModel::Lemma : quadratic no root : " << conf
-                          << std::endl;
-    lemmas.push_back(conf);
-    Trace("nl-ext-cms") << "...fail due to negative discriminant." << std::endl;
-    return false;
-  }
-  if (hasCheckModelAssignment(var))
-  {
-    Trace("nl-ext-cms") << "...fail due to bounds on variable to solve for."
-                        << std::endl;
-    // two quadratic equations for same variable, give up
-    return false;
-  }
-  // approximate the square root of sqrt_val
-  Node l, u;
-  if (!getApproximateSqrt(sqrt_val, l, u, 15 + d))
-  {
-    Trace("nl-ext-cms") << "...fail, could not approximate sqrt." << std::endl;
-    return false;
-  }
-  d_used_approx = true;
-  Trace("nl-ext-quad") << "...got " << l << " <= sqrt(" << sqrt_val
-                       << ") <= " << u << std::endl;
-  Node negb = nm->mkConst(-b.getConst<Rational>());
-  Node coeffa = nm->mkConst(Rational(1) / two_a.getConst<Rational>());
-  // two possible bound regions
-  Node bounds[2][2];
-  Node diff_bound[2];
-  Node m_var = computeConcreteModelValue(var);
-  Assert(m_var.isConst());
-  for (unsigned r = 0; r < 2; r++)
-  {
-    for (unsigned b2 = 0; b2 < 2; b2++)
-    {
-      Node val = b2 == 0 ? l : u;
-      // (-b +- approx_sqrt( b^2 - 4ac ))/2a
-      Node approx = nm->mkNode(
-          MULT, coeffa, nm->mkNode(r == 0 ? MINUS : PLUS, negb, val));
-      approx = Rewriter::rewrite(approx);
-      bounds[r][b2] = approx;
-      Assert(approx.isConst());
-    }
-    if (bounds[r][0].getConst<Rational>() > bounds[r][1].getConst<Rational>())
-    {
-      // ensure bound is (lower, upper)
-      Node tmp = bounds[r][0];
-      bounds[r][0] = bounds[r][1];
-      bounds[r][1] = tmp;
-    }
-    Node diff =
-        nm->mkNode(MINUS,
-                   m_var,
-                   nm->mkNode(MULT,
-                              nm->mkConst(Rational(1) / Rational(2)),
-                              nm->mkNode(PLUS, bounds[r][0], bounds[r][1])));
-    Trace("nl-ext-cm-debug") << "Bound option #" << r << " : ";
-    printRationalApprox("nl-ext-cm-debug", bounds[r][0]);
-    Trace("nl-ext-cm-debug") << "...";
-    printRationalApprox("nl-ext-cm-debug", bounds[r][1]);
-    Trace("nl-ext-cm-debug") << std::endl;
-    diff = Rewriter::rewrite(diff);
-    Assert(diff.isConst());
-    diff = nm->mkConst(diff.getConst<Rational>().abs());
-    diff_bound[r] = diff;
-    Trace("nl-ext-cm-debug") << "...diff from model value (";
-    printRationalApprox("nl-ext-cm-debug", m_var);
-    Trace("nl-ext-cm-debug") << ") is ";
-    printRationalApprox("nl-ext-cm-debug", diff_bound[r]);
-    Trace("nl-ext-cm-debug") << std::endl;
-  }
-  // take the one that var is closer to in the model
-  Node cmp = nm->mkNode(GEQ, diff_bound[0], diff_bound[1]);
-  cmp = Rewriter::rewrite(cmp);
-  Assert(cmp.isConst());
-  unsigned r_use_index = cmp == d_true ? 1 : 0;
-  Trace("nl-ext-cm") << "check-model-bound : approximate (sqrt) : ";
-  printRationalApprox("nl-ext-cm", bounds[r_use_index][0]);
-  Trace("nl-ext-cm") << " <= " << var << " <= ";
-  printRationalApprox("nl-ext-cm", bounds[r_use_index][1]);
-  Trace("nl-ext-cm") << std::endl;
-  bool ret =
-      addCheckModelBound(var, bounds[r_use_index][0], bounds[r_use_index][1]);
-  if (ret)
-  {
-    d_check_model_solved[eq] = var;
-    Trace("nl-ext-cms") << "...success, solved quadratic." << std::endl;
-  }
-  return ret;
+  return false;
 }
 
 bool NlModel::simpleCheckModelLit(Node lit)
@@ -782,7 +580,7 @@ bool NlModel::simpleCheckModelLit(Node lit)
       {
         lit2 = lit2.negate();
       }
-      lit2 = Rewriter::rewrite(lit2);
+      lit2 = rewrite(lit2);
       bool success = simpleCheckModelLit(lit2);
       if (success != pol)
       {
@@ -816,7 +614,7 @@ bool NlModel::simpleCheckModelLit(Node lit)
   Trace("nl-ext-cms-debug")
       << "* Try univariate quadratic analysis..." << std::endl;
   std::vector<Node> vs_invalid;
-  std::unordered_set<Node, NodeHashFunction> vs;
+  std::unordered_set<Node> vs;
   std::map<Node, Node> v_a;
   std::map<Node, Node> v_b;
   // get coefficients...
@@ -848,8 +646,7 @@ bool NlModel::simpleCheckModelLit(Node lit)
                                                 ? vs_invalid[0]
                                                 : nm->mkNode(PLUS, vs_invalid));
   // substitution to try
-  std::vector<Node> qvars;
-  std::vector<Node> qsubs;
+  Subs qsub;
   for (const Node& v : vs)
   {
     // is it a valid variable?
@@ -872,7 +669,7 @@ bool NlModel::simpleCheckModelLit(Node lit)
           b = it->second;
           t = nm->mkNode(PLUS, t, nm->mkNode(MULT, b, v));
         }
-        t = Rewriter::rewrite(t);
+        t = rewrite(t);
         Trace("nl-ext-cms-debug") << "Trying to find min/max for quadratic "
                                   << t << "..." << std::endl;
         Trace("nl-ext-cms-debug") << "    a = " << a << std::endl;
@@ -880,7 +677,7 @@ bool NlModel::simpleCheckModelLit(Node lit)
         // find maximal/minimal value on the interval
         Node apex = nm->mkNode(
             DIVISION, nm->mkNode(UMINUS, b), nm->mkNode(MULT, d_two, a));
-        apex = Rewriter::rewrite(apex);
+        apex = rewrite(apex);
         Assert(apex.isConst());
         // for lower, upper, whether we are greater than the apex
         bool cmp[2];
@@ -889,7 +686,7 @@ bool NlModel::simpleCheckModelLit(Node lit)
         {
           boundn[r] = r == 0 ? bit->second.first : bit->second.second;
           Node cmpn = nm->mkNode(GT, boundn[r], apex);
-          cmpn = Rewriter::rewrite(cmpn);
+          cmpn = rewrite(cmpn);
           Assert(cmpn.isConst());
           cmp[r] = cmpn.getConst<bool>();
         }
@@ -901,7 +698,7 @@ bool NlModel::simpleCheckModelLit(Node lit)
         Assert(boundn[0].getConst<Rational>()
                <= boundn[1].getConst<Rational>());
         Node s;
-        qvars.push_back(v);
+        qsub.add(v, Node());
         if (cmp[0] != cmp[1])
         {
           Assert(!cmp[0] && cmp[1]);
@@ -918,15 +715,14 @@ bool NlModel::simpleCheckModelLit(Node lit)
             Node tcmpn[2];
             for (unsigned r = 0; r < 2; r++)
             {
-              qsubs.push_back(boundn[r]);
-              Node ts = arithSubstitute(t, qvars, qsubs);
-              tcmpn[r] = Rewriter::rewrite(ts);
-              qsubs.pop_back();
+              qsub.d_subs.back() = boundn[r];
+              Node ts = arithSubstitute(t, qsub);
+              tcmpn[r] = rewrite(ts);
             }
             Node tcmp = nm->mkNode(LT, tcmpn[0], tcmpn[1]);
             Trace("nl-ext-cms-debug")
                 << "  ...both sides of apex, compare " << tcmp << std::endl;
-            tcmp = Rewriter::rewrite(tcmp);
+            tcmp = rewrite(tcmp);
             Assert(tcmp.isConst());
             unsigned bindex_use = (tcmp.getConst<bool>() == pol) ? 1 : 0;
             Trace("nl-ext-cms-debug")
@@ -951,17 +747,16 @@ bool NlModel::simpleCheckModelLit(Node lit)
           s = boundn[bindex_use];
         }
         Assert(!s.isNull());
-        qsubs.push_back(s);
+        qsub.d_subs.back() = s;
         Trace("nl-ext-cms") << "* set bound based on quadratic : " << v
                             << " -> " << s << std::endl;
       }
     }
   }
-  if (!qvars.empty())
+  if (!qsub.empty())
   {
-    Assert(qvars.size() == qsubs.size());
-    Node slit = arithSubstitute(lit, qvars, qsubs);
-    slit = Rewriter::rewrite(slit);
+    Node slit = arithSubstitute(lit, qsub);
+    slit = rewrite(slit);
     return simpleCheckModelLit(slit);
   }
   return false;
@@ -1087,6 +882,11 @@ bool NlModel::simpleCheckModelMsum(const std::map<Node, Node>& msum, bool pol)
         }
         else
         {
+          Assert(d_check_model_witnesses.find(vc)
+                 == d_check_model_witnesses.end())
+              << "No variable should be assigned a witness term if we get "
+                 "here. "
+              << vc << " is, though." << std::endl;
           Trace("nl-ext-cms-debug") << std::endl;
           Trace("nl-ext-cms")
               << "  failed due to unknown bound for " << vc << std::endl;
@@ -1203,52 +1003,10 @@ bool NlModel::simpleCheckModelMsum(const std::map<Node, Node>& msum, bool pol)
     comp = comp.negate();
   }
   Trace("nl-ext-cms") << "  comparison is : " << comp << std::endl;
-  comp = Rewriter::rewrite(comp);
+  comp = rewrite(comp);
   Assert(comp.isConst());
   Trace("nl-ext-cms") << "  returned : " << comp << std::endl;
   return comp == d_true;
-}
-
-bool NlModel::getApproximateSqrt(Node c, Node& l, Node& u, unsigned iter) const
-{
-  Assert(c.isConst());
-  if (c == d_one || c == d_zero)
-  {
-    l = c;
-    u = c;
-    return true;
-  }
-  Rational rc = c.getConst<Rational>();
-
-  Rational rl = rc < Rational(1) ? rc : Rational(1);
-  Rational ru = rc < Rational(1) ? Rational(1) : rc;
-  unsigned count = 0;
-  Rational half = Rational(1) / Rational(2);
-  while (count < iter)
-  {
-    Rational curr = half * (rl + ru);
-    Rational curr_sq = curr * curr;
-    if (curr_sq == rc)
-    {
-      rl = curr;
-      ru = curr;
-      break;
-    }
-    else if (curr_sq < rc)
-    {
-      rl = curr;
-    }
-    else
-    {
-      ru = curr;
-    }
-    count++;
-  }
-
-  NodeManager* nm = NodeManager::currentNM();
-  l = nm->mkConst(rl);
-  u = nm->mkConst(ru);
-  return true;
 }
 
 void NlModel::printModelValue(const char* c, Node n, unsigned prec) const
@@ -1256,30 +1014,42 @@ void NlModel::printModelValue(const char* c, Node n, unsigned prec) const
   if (Trace.isOn(c))
   {
     Trace(c) << "  " << n << " -> ";
-    for (int i = 1; i >= 0; --i)
+    const Node& aval = d_abstractModelCache.at(n);
+    if (aval.isConst())
     {
-      std::map<Node, Node>::const_iterator it = d_mv[i].find(n);
-      Assert(it != d_mv[i].end());
-      if (it->second.isConst())
-      {
-        printRationalApprox(c, it->second, prec);
-      }
-      else
-      {
-        Trace(c) << "?";
-      }
-      Trace(c) << (i == 1 ? " [actual: " : " ]");
+      printRationalApprox(c, aval, prec);
     }
-    Trace(c) << std::endl;
+    else
+    {
+      Trace(c) << "?";
+    }
+    Trace(c) << " [actual: ";
+    const Node& cval = d_concreteModelCache.at(n);
+    if (cval.isConst())
+    {
+      printRationalApprox(c, cval, prec);
+    }
+    else
+    {
+      Trace(c) << "?";
+    }
+    Trace(c) << " ]" << std::endl;
   }
 }
 
 void NlModel::getModelValueRepair(
     std::map<Node, Node>& arithModel,
-    std::map<Node, std::pair<Node, Node>>& approximations)
+    std::map<Node, std::pair<Node, Node>>& approximations,
+    std::map<Node, Node>& witnesses,
+    bool witnessToValue)
 {
   Trace("nl-model") << "NlModel::getModelValueRepair:" << std::endl;
-
+  // If we extended the model with entries x -> 0 for unconstrained values,
+  // we first update the map to the extended one.
+  if (d_arithVal.size() > arithModel.size())
+  {
+    arithModel = d_arithVal;
+  }
   // Record the approximations we used. This code calls the
   // recordApproximation method of the model, which overrides the model
   // values for variables that we solved for, using techniques specific to
@@ -1297,12 +1067,13 @@ void NlModel::getModelValueRepair(
       pred = nm->mkNode(AND, nm->mkNode(GEQ, v, l), nm->mkNode(GEQ, u, v));
       Trace("nl-model") << v << " approximated as " << pred << std::endl;
       Node witness;
-      if (options::modelWitnessValue())
+      if (witnessToValue)
       {
         // witness is the midpoint
-        witness = nm->mkNode(
-            MULT, nm->mkConst(Rational(1, 2)), nm->mkNode(PLUS, l, u));
-        witness = Rewriter::rewrite(witness);
+        witness = nm->mkNode(MULT,
+                             nm->mkConst(CONST_RATIONAL, Rational(1, 2)),
+                             nm->mkNode(PLUS, l, u));
+        witness = rewrite(witness);
         Trace("nl-model") << v << " witness is " << witness << std::endl;
       }
       approximations[v] = std::pair<Node, Node>(pred, witness);
@@ -1314,17 +1085,21 @@ void NlModel::getModelValueRepair(
       Trace("nl-model") << v << " exact approximation is " << l << std::endl;
     }
   }
+  for (const auto& vw : d_check_model_witnesses)
+  {
+    Trace("nl-model") << vw.first << " witness is " << vw.second << std::endl;
+    witnesses.emplace(vw.first, vw.second);
+  }
   // Also record the exact values we used. An exact value can be seen as a
   // special kind approximation of the form (witness x. x = exact_value).
   // Notice that the above term gets rewritten such that the choice function
   // is eliminated.
-  for (size_t i = 0, num = d_check_model_vars.size(); i < num; i++)
+  for (size_t i = 0; i < d_substitutions.size(); ++i)
   {
-    Node v = d_check_model_vars[i];
-    Node s = d_check_model_subs[i];
     // overwrite
-    arithModel[v] = s;
-    Trace("nl-model") << v << " solved is " << s << std::endl;
+    arithModel[d_substitutions.d_vars[i]] = d_substitutions.d_subs[i];
+    Trace("nl-model") << d_substitutions.d_vars[i] << " solved is "
+                      << d_substitutions.d_subs[i] << std::endl;
   }
 
   // multiplication terms should not be given values; their values are
@@ -1343,7 +1118,50 @@ void NlModel::getModelValueRepair(
   }
 }
 
+Node NlModel::getValueInternal(TNode n)
+{
+  if (n.isConst())
+  {
+    return n;
+  }
+  if (auto it = d_arithVal.find(n); it != d_arithVal.end())
+  {
+    AlwaysAssert(it->second.isConst());
+    return it->second;
+  }
+  // It is unconstrained in the model, return 0. We additionally add it
+  // to mapping from the linear solver. This ensures that if the nonlinear
+  // solver assumes that n = 0, then this assumption is recorded in the overall
+  // model.
+  d_arithVal[n] = d_zero;
+  return d_zero;
+}
+
+bool NlModel::hasAssignment(Node v) const
+{
+  if (d_check_model_bounds.find(v) != d_check_model_bounds.end())
+  {
+    return true;
+  }
+  if (d_check_model_witnesses.find(v) != d_check_model_witnesses.end())
+  {
+    return true;
+  }
+  return (d_substitutions.contains(v));
+}
+
+bool NlModel::hasLinearModelValue(TNode v, Node& val) const
+{
+  auto it = d_arithVal.find(v);
+  if (it != d_arithVal.end())
+  {
+    val = it->second;
+    return true;
+  }
+  return false;
+}
+
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5

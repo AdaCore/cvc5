@@ -1,5 +1,6 @@
-; COMMAND-LINE: --quiet
+; COMMAND-LINE: --no-check-models
 ; EXPECT: sat
 (set-logic ALL)
-(assert (_ emp Int Int))
+(declare-heap (Int Int))
+(assert sep.emp)
 (check-sat)

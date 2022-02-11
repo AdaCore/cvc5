@@ -1,32 +1,35 @@
-/*********************                                                        */
-/*! \file base_solver.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Andres Noetzli
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Base solver for term indexing and constant inference for the
- ** theory of strings.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Andres Noetzli, Mudathir Mohamed
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Base solver for term indexing and constant inference for the
+ * theory of strings.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__STRINGS__BASE_SOLVER_H
-#define CVC4__THEORY__STRINGS__BASE_SOLVER_H
+#ifndef CVC5__THEORY__STRINGS__BASE_SOLVER_H
+#define CVC5__THEORY__STRINGS__BASE_SOLVER_H
 
 #include "context/cdhashset.h"
 #include "context/cdlist.h"
+#include "smt/env_obj.h"
 #include "theory/strings/infer_info.h"
 #include "theory/strings/inference_manager.h"
 #include "theory/strings/normal_form.h"
 #include "theory/strings/skolem_cache.h"
 #include "theory/strings/solver_state.h"
+#include "theory/strings/term_registry.h"
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace strings {
 
@@ -36,12 +39,12 @@ namespace strings {
  * current context, and techniques for inferring when equivalence classes
  * are equivalent to constants.
  */
-class BaseSolver
+class BaseSolver : protected EnvObj
 {
-  using NodeSet = context::CDHashSet<Node, NodeHashFunction>;
+  using NodeSet = context::CDHashSet<Node>;
 
  public:
-  BaseSolver(SolverState& s, InferenceManager& im);
+  BaseSolver(Env& env, SolverState& s, InferenceManager& im, TermRegistry& tr);
   ~BaseSolver();
 
   //-----------------------inference steps
@@ -103,7 +106,7 @@ class BaseSolver
   /**
    * Get the set of equivalence classes of type string.
    */
-  const std::vector<Node>& getStringEqc() const;
+  const std::vector<Node>& getStringLikeEqc() const;
   //-----------------------end query functions
 
  private:
@@ -214,6 +217,8 @@ class BaseSolver
   SolverState& d_state;
   /** The (custom) output channel of the theory of strings */
   InferenceManager& d_im;
+  /** Reference to the term registry of theory of strings */
+  TermRegistry& d_termReg;
   /** Commonly used constants */
   Node d_emptyString;
   Node d_false;
@@ -225,7 +230,7 @@ class BaseSolver
    *
    * This set contains a set of nodes that are not representatives of their
    * congruence class. This set is used to skip reasoning about terms in
-   * various inference schemas implemnted by this class.
+   * various inference schemas implemented by this class.
    */
   NodeSet d_congruent;
   /**
@@ -233,16 +238,16 @@ class BaseSolver
    * for more information.
    */
   std::map<Node, BaseEqcInfo> d_eqcInfo;
-  /** The list of equivalence classes of type string */
-  std::vector<Node> d_stringsEqc;
-  /** A term index for each function kind */
-  std::map<Kind, TermIndex> d_termIndex;
+  /** The list of equivalence classes of string-like types */
+  std::vector<Node> d_stringLikeEqc;
+  /** A term index for each type, function kind pair */
+  std::map<TypeNode, std::map<Kind, TermIndex> > d_termIndex;
   /** the cardinality of the alphabet */
   uint32_t d_cardSize;
 }; /* class BaseSolver */
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5
 
-#endif /* CVC4__THEORY__STRINGS__BASE_SOLVER_H */
+#endif /* CVC5__THEORY__STRINGS__BASE_SOLVER_H */

@@ -1,18 +1,17 @@
-/*********************                                                        */
-/*! \file substitutions.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Dejan Jovanovic, Clark Barrett, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief A substitution mapping for theory simplification
- **
- ** A substitution mapping for theory simplification.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Dejan Jovanovic, Clark Barrett, Morgan Deters
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * A substitution mapping for theory simplification.
+ */
 
 #include "theory/substitutions.h"
 #include "expr/node_algorithm.h"
@@ -20,8 +19,27 @@
 
 using namespace std;
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
+
+SubstitutionMap::SubstitutionMap(context::Context* context)
+    : d_context(),
+      d_substitutions(context ? context : &d_context),
+      d_substitutionCache(),
+      d_cacheInvalidated(false),
+      d_cacheInvalidator(context ? context : &d_context, d_cacheInvalidated)
+{
+}
+
+std::unordered_map<Node, Node> SubstitutionMap::getSubstitutions()
+{
+  std::unordered_map<Node, Node> subs;
+  for (const auto& sub : d_substitutions)
+  {
+    subs.emplace(sub.first, sub.second);
+  }
+  return subs;
+}
 
 struct substitution_stack_element {
   TNode d_node;
@@ -31,7 +49,7 @@ struct substitution_stack_element {
   }
 };/* struct substitution_stack_element */
 
-Node SubstitutionMap::internalSubstitute(TNode t, NodeCache& cache) {
+Node SubstitutionMap::internalSubstitute(TNode t, NodeCache& cache, std::set<TNode>* tracker) {
 
   Debug("substitution::internal") << "SubstitutionMap::internalSubstitute(" << t << ")" << endl;
 
@@ -58,22 +76,21 @@ Node SubstitutionMap::internalSubstitute(TNode t, NodeCache& cache) {
       continue;
     }
 
-    if (!d_substituteUnderQuantifiers && current.isClosure())
-    {
-      Debug("substitution::internal") << "--not substituting under quantifier" << endl;
-      cache[current] = current;
-      toVisit.pop_back();
-      continue;
-    }
-
     NodeMap::iterator find2 = d_substitutions.find(current);
     if (find2 != d_substitutions.end()) {
       Node rhs = (*find2).second;
       Assert(rhs != current);
-      internalSubstitute(rhs, cache);
-      d_substitutions[current] = cache[rhs];
+      internalSubstitute(rhs, cache, tracker);
+      if (tracker == nullptr)
+      {
+        d_substitutions[current] = cache[rhs];
+      }
       cache[current] = cache[rhs];
       toVisit.pop_back();
+      if (tracker != nullptr)
+      {
+        tracker->insert(current);
+      }
       continue;
     }
 
@@ -81,7 +98,7 @@ Node SubstitutionMap::internalSubstitute(TNode t, NodeCache& cache) {
     if (stackHead.d_children_added)
     {
       // Children have been processed, so substitute
-      NodeBuilder<> builder(current.getKind());
+      NodeBuilder builder(current.getKind());
       if (current.getMetaKind() == kind::metakind::PARAMETERIZED) {
         builder << Node(cache[current.getOperator()]);
       }
@@ -101,9 +118,13 @@ Node SubstitutionMap::internalSubstitute(TNode t, NodeCache& cache) {
           if (find2 != d_substitutions.end()) {
             Node rhs = (*find2).second;
             Assert(rhs != result);
-            internalSubstitute(rhs, cache);
+            internalSubstitute(rhs, cache, tracker);
             d_substitutions[result] = cache[rhs];
             cache[result] = cache[rhs];
+            if (tracker != nullptr)
+            {
+              tracker->insert(result);
+            }
             result = cache[rhs];
           }
         }
@@ -147,36 +168,6 @@ Node SubstitutionMap::internalSubstitute(TNode t, NodeCache& cache) {
 }/* SubstitutionMap::internalSubstitute() */
 
 
-void SubstitutionMap::simplifyRHS(const SubstitutionMap& subMap)
-{
-  // Put the new substitutions into the old ones
-  NodeMap::iterator it = d_substitutions.begin();
-  NodeMap::iterator it_end = d_substitutions.end();
-  for(; it != it_end; ++ it) {
-    d_substitutions[(*it).first] = subMap.apply((*it).second);
-  }  
-}
-
-
-void SubstitutionMap::simplifyRHS(TNode x, TNode t) {
-  // Temporary substitution cache
-  NodeCache tempCache;
-  tempCache[x] = t;
-
-  // Put the new substitution into the old ones
-  NodeMap::iterator it = d_substitutions.begin();
-  NodeMap::iterator it_end = d_substitutions.end();
-  for(; it != it_end; ++ it) {
-    d_substitutions[(*it).first] = internalSubstitute((*it).second, tempCache);
-  }  
-  // it = d_substitutionsLazy.begin();
-  // it_end = d_substitutionsLazy.end();
-  // for(; it != it_end; ++ it) {
-  //   d_substitutionsLazy[(*it).first] = internalSubstitute((*it).second, tempCache);
-  // }  
-}
-
-
 void SubstitutionMap::addSubstitution(TNode x, TNode t, bool invalidateCache)
 {
   Debug("substitution") << "SubstitutionMap::addSubstitution(" << x << ", " << t << ")" << endl;
@@ -200,8 +191,8 @@ void SubstitutionMap::addSubstitution(TNode x, TNode t, bool invalidateCache)
 
 void SubstitutionMap::addSubstitutions(SubstitutionMap& subMap, bool invalidateCache)
 {
-  SubstitutionMap::NodeMap::const_iterator it = subMap.begin();
-  SubstitutionMap::NodeMap::const_iterator it_end = subMap.end();
+  NodeMap::const_iterator it = subMap.begin();
+  NodeMap::const_iterator it_end = subMap.end();
   for (; it != it_end; ++ it) {
     Assert(d_substitutions.find((*it).first) == d_substitutions.end());
     d_substitutions[(*it).first] = (*it).second;
@@ -214,27 +205,7 @@ void SubstitutionMap::addSubstitutions(SubstitutionMap& subMap, bool invalidateC
   }
 }
 
-static bool check(TNode node,
-                  const SubstitutionMap::NodeMap& substitutions) CVC4_UNUSED;
-static bool check(TNode node, const SubstitutionMap::NodeMap& substitutions)
-{
-  SubstitutionMap::NodeMap::const_iterator it = substitutions.begin();
-  SubstitutionMap::NodeMap::const_iterator it_end = substitutions.end();
-  Debug("substitution") << "checking " << node << endl;
-  for (; it != it_end; ++it)
-  {
-    Debug("substitution") << "-- hasSubterm( " << (*it).first << " ) ?" << endl;
-    if (expr::hasSubterm(node, (*it).first))
-    {
-      Debug("substitution") << "-- FAIL" << endl;
-      return false;
-    }
-  }
-  Debug("substitution") << "-- SUCCEED" << endl;
-  return true;
-}
-
-Node SubstitutionMap::apply(TNode t) {
+Node SubstitutionMap::apply(TNode t, Rewriter* r, std::set<TNode>* tracker) {
 
   Debug("substitution") << "SubstitutionMap::apply(" << t << ")" << endl;
 
@@ -246,10 +217,15 @@ Node SubstitutionMap::apply(TNode t) {
   }
 
   // Perform the substitution
-  Node result = internalSubstitute(t, d_substitutionCache);
+  Node result = internalSubstitute(t, d_substitutionCache, tracker);
   Debug("substitution") << "SubstitutionMap::apply(" << t << ") => " << result << endl;
 
-  //  Assert(check(result, d_substitutions));
+  if (r != nullptr)
+  {
+    result = r->rewrite(result);
+    Assert(r->rewrite(result) == result) << "Non-idempotent rewrite: " << result
+                                         << " --> " << r->rewrite(result);
+  }
 
   return result;
 }
@@ -262,14 +238,10 @@ void SubstitutionMap::print(ostream& out) const {
   }
 }
 
-void SubstitutionMap::debugPrint() const {
-  print(Message.getStream());
-}
-
-}/* CVC4::theory namespace */
+}  // namespace theory
 
 std::ostream& operator<<(std::ostream& out, const theory::SubstitutionMap::iterator& i) {
   return out << "[CDMap-iterator]";
 }
 
-}/* CVC4 namespace */
+}  // namespace cvc5

@@ -1,34 +1,37 @@
-/*********************                                                        */
-/*! \file query_generator.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of a class for mining interesting satisfiability
- ** queries from a stream of generated expressions.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Mathias Preiner, Gereon Kremer
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of a class for mining interesting satisfiability
+ * queries from a stream of generated expressions.
+ */
 
 #include "theory/quantifiers/query_generator.h"
 
 #include <fstream>
+#include <sstream>
+
 #include "options/quantifiers_options.h"
-#include "smt/smt_engine.h"
-#include "smt/smt_engine_scope.h"
+#include "smt/env.h"
+#include "smt/print_benchmark.h"
 #include "util/random.h"
 
 using namespace std;
-using namespace CVC4::kind;
+using namespace cvc5::kind;
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace quantifiers {
 
-QueryGenerator::QueryGenerator() : d_queryCount(0) {}
+QueryGenerator::QueryGenerator(Env& env) : ExprMiner(env), d_queryCount(0) {}
 void QueryGenerator::initialize(const std::vector<Node>& vars, SygusSampler* ss)
 {
   Assert(ss != nullptr);
@@ -68,20 +71,26 @@ bool QueryGenerator::addTerm(Node n, std::ostream& out)
   {
     std::map<Node, std::vector<unsigned>> ev_to_pt;
     unsigned index = 0;
+    // the number of {true,false} for which the #points evaluated to that
+    // constant is greater than the threshold.
     unsigned threshCount = 0;
     while (index < npts && threshCount < 2)
     {
       Node v = d_sampler->evaluate(nn, index);
-      ev_to_pt[v].push_back(index);
-      if (ev_to_pt[v].size() == d_deqThresh + 1)
+      // it may not evaluate, in which case we ignore the point
+      if (v.isConst())
       {
-        threshCount++;
+        ev_to_pt[v].push_back(index);
+        if (ev_to_pt[v].size() == d_deqThresh + 1)
+        {
+          threshCount++;
+        }
       }
       index++;
     }
     if (threshCount < 2)
     {
-      for (const std::pair<Node, std::vector<unsigned>>& etp : ev_to_pt)
+      for (const auto& etp : ev_to_pt)
       {
         if (etp.second.size() < d_deqThresh)
         {
@@ -114,10 +123,10 @@ bool QueryGenerator::addTerm(Node n, std::ostream& out)
     Node qy = queries[i];
     std::vector<unsigned>& tIndices = queriesPtTrue[i];
     // we have an interesting query
-    out << "(query " << qy << ")  ; " << tIndices.size() << "/" << npts
-        << std::endl;
+    Trace("sygus-qgen-debug")
+        << "; " << tIndices.size() << "/" << npts << std::endl;
     AlwaysAssert(!tIndices.empty());
-    checkQuery(qy, tIndices[0]);
+    checkQuery(qy, tIndices[0], out);
     // add information
     for (unsigned& ti : tIndices)
     {
@@ -134,40 +143,47 @@ bool QueryGenerator::addTerm(Node n, std::ostream& out)
     if (qsi.size() > 1)
     {
       // take two random queries
-      std::shuffle(qsi.begin(), qsi.end(), Random::getRandom());
-      Node qy = nm->mkNode(AND, qsi[0], qsi[1]);
-      checkQuery(qy, i);
+      size_t rindex = Random::getRandom().pick(0, qsi.size() - 1);
+      size_t rindex2 = Random::getRandom().pick(0, qsi.size() - 2);
+      if (rindex2 >= rindex)
+      {
+        rindex2 = rindex2 + 1;
+      }
+      Node qy = nm->mkNode(AND, qsi[rindex], qsi[rindex2]);
+      checkQuery(qy, i, out);
     }
   }
   Trace("sygus-qgen-check") << "...finished." << std::endl;
   return true;
 }
 
-void QueryGenerator::checkQuery(Node qy, unsigned spIndex)
+void QueryGenerator::checkQuery(Node qy, unsigned spIndex, std::ostream& out)
 {
+  if (d_allQueries.find(qy) != d_allQueries.end())
+  {
+    return;
+  }
+  d_allQueries.insert(qy);
+  out << "(query " << qy << ")" << std::endl;
   // external query
-  if (options::sygusQueryGenDumpFiles()
+  if (options().quantifiers.sygusQueryGenDumpFiles
       == options::SygusQueryDumpFilesMode::ALL)
   {
-    dumpQuery(qy, spIndex);
+    dumpQuery(qy);
   }
 
-  if (options::sygusQueryGenCheck())
+  if (options().quantifiers.sygusQueryGenCheck)
   {
     Trace("sygus-qgen-check") << "  query: check " << qy << "..." << std::endl;
-    NodeManager* nm = NodeManager::currentNM();
     // make the satisfiability query
-    bool needExport = false;
-    ExprManager em(nm->getOptions());
-    std::unique_ptr<SmtEngine> queryChecker;
-    ExprManagerMapCollection varMap;
-    initializeChecker(queryChecker, em, varMap, qy, needExport);
+    std::unique_ptr<SolverEngine> queryChecker;
+    initializeChecker(queryChecker, qy);
     Result r = queryChecker->checkSat();
     Trace("sygus-qgen-check") << "  query: ...got : " << r << std::endl;
     if (r.asSatisfiabilityResult().isSat() == Result::UNSAT)
     {
       std::stringstream ss;
-      ss << "--sygus-rr-query-gen detected unsoundness in CVC4 on input " << qy
+      ss << "--sygus-rr-query-gen detected unsoundness in cvc5 on input " << qy
          << "!" << std::endl;
       ss << "This query has a model : " << std::endl;
       std::vector<Node> pt;
@@ -177,15 +193,15 @@ void QueryGenerator::checkQuery(Node qy, unsigned spIndex)
       {
         ss << "  " << d_vars[i] << " -> " << pt[i] << std::endl;
       }
-      ss << "but CVC4 answered unsat!" << std::endl;
+      ss << "but cvc5 answered unsat!" << std::endl;
       AlwaysAssert(false) << ss.str();
     }
-    if (options::sygusQueryGenDumpFiles()
+    if (options().quantifiers.sygusQueryGenDumpFiles
         == options::SygusQueryDumpFilesMode::UNSOLVED)
     {
       if (r.asSatisfiabilityResult().isSat() != Result::SAT)
       {
-        dumpQuery(qy, spIndex);
+        dumpQuery(qy);
       }
     }
   }
@@ -193,36 +209,15 @@ void QueryGenerator::checkQuery(Node qy, unsigned spIndex)
   d_queryCount++;
 }
 
-void QueryGenerator::dumpQuery(Node qy, unsigned spIndex)
+void QueryGenerator::dumpQuery(Node qy)
 {
-  // Print the query and the query + its model (commented) to queryN.smt2
-  std::vector<Node> pt;
-  d_sampler->getSamplePoint(spIndex, pt);
-  size_t nvars = d_vars.size();
-  AlwaysAssert(pt.size() == d_vars.size());
+  Node kqy = convertToSkolem(qy);
+  // Print the query to to queryN.smt2
   std::stringstream fname;
   fname << "query" << d_queryCount << ".smt2";
   std::ofstream fs(fname.str(), std::ofstream::out);
-  fs << "(set-logic ALL)" << std::endl;
-  for (unsigned i = 0; i < 2; i++)
-  {
-    for (size_t j = 0; j < nvars; j++)
-    {
-      Node x = d_vars[j];
-      if (i == 0)
-      {
-        fs << "(declare-fun " << x << " () " << x.getType() << ")";
-      }
-      else
-      {
-        fs << ";(define-fun " << x << " () " << x.getType() << " " << pt[j]
-           << ")";
-      }
-      fs << std::endl;
-    }
-  }
-  fs << "(assert " << qy << ")" << std::endl;
-  fs << "(check-sat)" << std::endl;
+  smt::PrintBenchmark pb(&d_env.getPrinter());
+  pb.printBenchmark(fs, d_env.getLogicInfo().getLogicString(), {}, {kqy});
   fs.close();
 }
 
@@ -427,4 +422,4 @@ void QueryGenerator::findQueries(
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5

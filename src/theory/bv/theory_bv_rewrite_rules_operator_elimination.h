@@ -1,31 +1,34 @@
-/*********************                                                        */
-/*! \file theory_bv_rewrite_rules_operator_elimination.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Liana Hadarean, Aina Niemetz, Yoni Zohar
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief [[ Add one-line brief description here ]]
- **
- ** [[ Add lengthier description here ]]
- ** \todo document this file
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Yoni Zohar, Liana Hadarean, Aina Niemetz
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * [[ Add one-line brief description here ]]
+ *
+ * [[ Add lengthier description here ]]
+ * \todo document this file
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
 #pragma once
 
 #include "options/bv_options.h"
 #include "theory/bv/theory_bv_rewrite_rules.h"
 #include "theory/bv/theory_bv_utils.h"
+#include "util/bitvector.h"
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace bv {
+
 
 template <>
 inline bool RewriteRule<UgtEliminate>::applies(TNode node)
@@ -110,8 +113,8 @@ inline Node RewriteRule<SltEliminate>::apply(TNode node)
   unsigned size = utils::getSize(node[0]);
   Integer val = Integer(1).multiplyByPow2(size - 1);
   Node pow_two = utils::mkConst(size, val);
-  Node a = nm->mkNode(kind::BITVECTOR_PLUS, node[0], pow_two);
-  Node b = nm->mkNode(kind::BITVECTOR_PLUS, node[1], pow_two);
+  Node a = nm->mkNode(kind::BITVECTOR_ADD, node[0], pow_two);
+  Node b = nm->mkNode(kind::BITVECTOR_ADD, node[1], pow_two);
 
   return nm->mkNode(kind::BITVECTOR_ULT, a, b);
 }
@@ -186,7 +189,7 @@ inline Node RewriteRule<SubEliminate>::apply(TNode node)
   Node negb = nm->mkNode(kind::BITVECTOR_NEG, node[1]);
   Node a = node[0];
 
-  return nm->mkNode(kind::BITVECTOR_PLUS, a, negb);
+  return nm->mkNode(kind::BITVECTOR_ADD, a, negb);
 }
 
 template <>
@@ -206,7 +209,7 @@ inline Node RewriteRule<RepeatEliminate>::apply(TNode node)
   if(amount == 1) {
     return a; 
   }
-  NodeBuilder<> result(kind::BITVECTOR_CONCAT);
+  NodeBuilder result(kind::BITVECTOR_CONCAT);
   for(unsigned i = 0; i < amount; ++i) {
     result << node[0]; 
   }
@@ -384,15 +387,48 @@ inline Node RewriteRule<SdivEliminate>::apply(TNode node)
   Node abs_b =
       nm->mkNode(kind::ITE, b_lt_0, nm->mkNode(kind::BITVECTOR_NEG, b), b);
 
-  Node a_udiv_b =
-      nm->mkNode(options::bitvectorDivByZeroConst() ? kind::BITVECTOR_UDIV_TOTAL
-                                                    : kind::BITVECTOR_UDIV,
-                 abs_a,
-                 abs_b);
+  Node a_udiv_b = nm->mkNode(kind::BITVECTOR_UDIV, abs_a, abs_b);
   Node neg_result = nm->mkNode(kind::BITVECTOR_NEG, a_udiv_b);
 
   Node condition = nm->mkNode(kind::XOR, a_lt_0, b_lt_0);
   Node result = nm->mkNode(kind::ITE, condition, neg_result, a_udiv_b);
+
+  return result;
+}
+
+/*
+ * This rewrite is not meant to be used by the BV rewriter
+ * It is specifically designed for the bv-to-int preprocessing pass.
+ * Similar to ordinary sdiv elimination.
+ * The sign-check is done with bvult instead of bit-extraction.
+ */
+template <>
+inline bool RewriteRule<SdivEliminateFewerBitwiseOps>::applies(TNode node)
+{
+  return (node.getKind() == kind::BITVECTOR_SDIV);
+}
+
+template <>
+inline Node RewriteRule<SdivEliminateFewerBitwiseOps>::apply(TNode node)
+{
+  Debug("bv-rewrite") << "RewriteRule<SdivEliminateFewerBitwiseOps>(" << node
+                      << ")" << std::endl;
+
+  NodeManager* nm = NodeManager::currentNM();
+  TNode a = node[0];
+  TNode b = node[1];
+  unsigned size = utils::getSize(a);
+  Node a_lt_0 = nm->mkNode(kind::BITVECTOR_UGE, a, utils::mkMinSigned(size));
+  Node b_lt_0 = nm->mkNode(kind::BITVECTOR_UGE, b, utils::mkMinSigned(size));
+  Node abs_a =
+      nm->mkNode(kind::ITE, a_lt_0, nm->mkNode(kind::BITVECTOR_NEG, a), a);
+  Node abs_b =
+      nm->mkNode(kind::ITE, b_lt_0, nm->mkNode(kind::BITVECTOR_NEG, b), b);
+
+  Node a_udiv_b = nm->mkNode(kind::BITVECTOR_UDIV, abs_a, abs_b);
+  Node neg_result = nm->mkNode(kind::BITVECTOR_NEG, a_udiv_b);
+
+  Node result = nm->mkNode(kind::ITE, a_lt_0.xorNode(b_lt_0), neg_result, a_udiv_b);
 
   return result;
 }
@@ -423,11 +459,42 @@ inline Node RewriteRule<SremEliminate>::apply(TNode node)
   Node abs_b =
       nm->mkNode(kind::ITE, b_lt_0, nm->mkNode(kind::BITVECTOR_NEG, b), b);
 
-  Node a_urem_b =
-      nm->mkNode(options::bitvectorDivByZeroConst() ? kind::BITVECTOR_UREM_TOTAL
-                                                    : kind::BITVECTOR_UREM,
-                 abs_a,
-                 abs_b);
+  Node a_urem_b = nm->mkNode(kind::BITVECTOR_UREM, abs_a, abs_b);
+  Node neg_result = nm->mkNode(kind::BITVECTOR_NEG, a_urem_b);
+
+  Node result = nm->mkNode(kind::ITE, a_lt_0, neg_result, a_urem_b);
+
+  return result;
+}
+
+/*
+ * This rewrite is not meant to be used by the BV rewriter
+ * It is specifically designed for the bv-to-int preprocessing pass.
+ * Similar to ordinary srem elimination.
+ * The sign-check is done with bvult instead of bit-extraction.
+ */
+template <>
+inline bool RewriteRule<SremEliminateFewerBitwiseOps>::applies(TNode node)
+{
+  return (node.getKind() == kind::BITVECTOR_SREM);
+}
+
+template <>
+inline Node RewriteRule<SremEliminateFewerBitwiseOps>::apply(TNode node)
+{
+  Debug("bv-rewrite") << "RewriteRule<SremEliminateFewerBitwiseOps>(" << node
+                      << ")" << std::endl;
+  NodeManager* nm = NodeManager::currentNM();
+  TNode a = node[0];
+  TNode b = node[1];
+  unsigned size = utils::getSize(a);
+  Node a_lt_0 = nm->mkNode(kind::BITVECTOR_UGE, a, utils::mkMinSigned(size));
+  Node b_lt_0 = nm->mkNode(kind::BITVECTOR_UGE, b, utils::mkMinSigned(size));
+  Node abs_a =
+      nm->mkNode(kind::ITE, a_lt_0, nm->mkNode(kind::BITVECTOR_NEG, a), a);
+  Node abs_b =
+      nm->mkNode(kind::ITE, b_lt_0, nm->mkNode(kind::BITVECTOR_NEG, b), b);
+  Node a_urem_b = nm->mkNode(kind::BITVECTOR_UREM, abs_a, abs_b);
   Node neg_result = nm->mkNode(kind::BITVECTOR_NEG, a_urem_b);
 
   Node result = nm->mkNode(kind::ITE, a_lt_0, neg_result, a_urem_b);
@@ -491,8 +558,75 @@ inline Node RewriteRule<SmodEliminate>::apply(TNode node)
       cond1.iteNode(
           u,
           cond2.iteNode(
-              nm->mkNode(kind::BITVECTOR_PLUS, neg_u, t),
-              cond3.iteNode(nm->mkNode(kind::BITVECTOR_PLUS, u, t), neg_u))));
+              nm->mkNode(kind::BITVECTOR_ADD, neg_u, t),
+              cond3.iteNode(nm->mkNode(kind::BITVECTOR_ADD, u, t), neg_u))));
+
+  return result;
+}
+
+/*
+ * This rewrite is not meant to be used by the BV rewriter
+ * It is specifically designed for the bv-to-int preprocessing pass.
+ * Similar to ordinary smod elimination.
+ * The sign-check is done with bvult instead of bit-extraction.
+ */
+template <>
+inline bool RewriteRule<SmodEliminateFewerBitwiseOps>::applies(TNode node)
+{
+  return (node.getKind() == kind::BITVECTOR_SMOD);
+}
+
+template <>
+inline Node RewriteRule<SmodEliminateFewerBitwiseOps>::apply(TNode node)
+{
+  Debug("bv-rewrite") << "RewriteRule<SmodEliminate>(" << node << ")"
+                      << std::endl;
+  NodeManager* nm = NodeManager::currentNM();
+  TNode s = node[0];
+  TNode t = node[1];
+  unsigned size = utils::getSize(s);
+
+  /*
+   * (bvsmod s t) abbreviates
+   *    (let ((?msb_s ((_ extract |m-1| |m-1|) s))
+   *          (?msb_t ((_ extract |m-1| |m-1|) t)))
+   *      (let ((abs_s (ite (= ?msb_s #b0) s (bvneg s)))
+   *            (abs_t (ite (= ?msb_t #b0) t (bvneg t))))
+   *        (let ((u (bvurem abs_s abs_t)))
+   *          (ite (= u (_ bv0 m))
+   *               u
+   *          (ite (and (= ?msb_s #b0) (= ?msb_t #b0))
+   *               u
+   *          (ite (and (= ?msb_s #b1) (= ?msb_t #b0))
+   *               (bvadd (bvneg u) t)
+   *          (ite (and (= ?msb_s #b0) (= ?msb_t #b1))
+   *               (bvadd u t)
+   *               (bvneg u))))))))
+   */
+
+  Node s_lt_0 = nm->mkNode(kind::BITVECTOR_UGE, s, utils::mkMinSigned(size));
+  Node t_lt_0 = nm->mkNode(kind::BITVECTOR_UGE, t, utils::mkMinSigned(size));
+  Node abs_s =
+      nm->mkNode(kind::ITE, s_lt_0, nm->mkNode(kind::BITVECTOR_NEG, s), s);
+  Node abs_t =
+      nm->mkNode(kind::ITE, t_lt_0, nm->mkNode(kind::BITVECTOR_NEG, t), t);
+
+  Node u = nm->mkNode(kind::BITVECTOR_UREM, abs_s, abs_t);
+  Node neg_u = nm->mkNode(kind::BITVECTOR_NEG, u);
+
+  Node cond0 = u.eqNode(utils::mkConst(size, 0));
+  Node cond1 =
+      nm->mkNode(kind::NOT, s_lt_0).andNode(nm->mkNode(kind::NOT, t_lt_0));
+  Node cond2 = s_lt_0.andNode(nm->mkNode(kind::NOT, t_lt_0));
+  Node cond3 = nm->mkNode(kind::NOT, s_lt_0).andNode(t_lt_0);
+
+  Node result = cond0.iteNode(
+      u,
+      cond1.iteNode(
+          u,
+          cond2.iteNode(
+              nm->mkNode(kind::BITVECTOR_ADD, neg_u, t),
+              cond3.iteNode(nm->mkNode(kind::BITVECTOR_ADD, u, t), neg_u))));
 
   return result;
 }
@@ -577,4 +711,4 @@ inline Node RewriteRule<RedandEliminate>::apply(TNode node)
 
 }
 }
-}
+}  // namespace cvc5

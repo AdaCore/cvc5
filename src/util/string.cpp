@@ -1,16 +1,17 @@
-/*********************                                                        */
-/*! \file string.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Tim King, Tianyi Liang
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Implementation of the string data type.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Tim King, Tianyi Liang
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Implementation of the string data type.
+ */
 
 #include "util/string.h"
 
@@ -22,16 +23,26 @@
 
 #include "base/check.h"
 #include "base/exception.h"
+#include "util/hash.h"
 
 using namespace std;
 
-namespace CVC4 {
+namespace cvc5 {
 
 static_assert(UCHAR_MAX == 255, "Unsigned char is assumed to have 256 values.");
 
+String::String(const std::wstring& s)
+{
+  d_str.resize(s.size());
+  for (size_t i = 0, n = s.size(); i < n; ++i)
+  {
+    d_str[i] = static_cast<unsigned>(s[i]);
+  }
+}
+
 String::String(const std::vector<unsigned> &s) : d_str(s)
 {
-#ifdef CVC4_ASSERTIONS
+#ifdef CVC5_ASSERTIONS
   for (unsigned u : d_str)
   {
     Assert(u < num_codes());
@@ -101,7 +112,7 @@ void String::addCharToInternal(unsigned char ch, std::vector<unsigned>& str)
     std::stringstream serr;
     serr << "Illegal string character: \"" << ch
          << "\", must use escape sequence";
-    throw CVC4::Exception(serr.str());
+    throw cvc5::Exception(serr.str());
   }
   else
   {
@@ -131,7 +142,7 @@ std::vector<unsigned> String::toInternal(const std::string& s,
     ++i;
     // are we an escape sequence?
     bool isEscapeSequence = true;
-    // the string corresponding to the hexidecimal code point
+    // the string corresponding to the hexadecimal code point
     std::stringstream hexString;
     // is the slash followed by a 'u'? Could be last character.
     if (i >= s.size() || s[i] != 'u')
@@ -195,7 +206,7 @@ std::vector<unsigned> String::toInternal(const std::string& s,
       }
       if (!isEnd)
       {
-        // if we were interupted before ending, then this is not a valid
+        // if we were interrupted before ending, then this is not a valid
         // escape sequence
         isEscapeSequence = false;
       }
@@ -210,7 +221,7 @@ std::vector<unsigned> String::toInternal(const std::string& s,
       if (val > num_codes())
       {
         // Failed due to being out of range. This can happen for strings of
-        // the form \ u { d_4 d_3 d_2 d_1 d_0 } where d_4 is a hexidecimal not
+        // the form \ u { d_4 d_3 d_2 d_1 d_0 } where d_4 is a hexadecimal not
         // in the range [0-2].
         isEscapeSequence = false;
       }
@@ -226,7 +237,7 @@ std::vector<unsigned> String::toInternal(const std::string& s,
       str.insert(str.end(), nonEscCache.begin(), nonEscCache.end());
     }
   }
-#ifdef CVC4_ASSERTIONS
+#ifdef CVC5_ASSERTIONS
   for (unsigned u : str)
   {
     Assert(u < num_codes());
@@ -274,9 +285,9 @@ std::size_t String::roverlap(const String &y) const {
 std::string String::toString(bool useEscSequences) const {
   std::stringstream str;
   for (unsigned int i = 0; i < size(); ++i) {
-    // we always print forward slash as a code point so that it cannot
-    // be interpreted as specifying part of a code point, e.g. the string
-    // '\' + 'u' + '0' of length three.
+    // we always print backslash as a code point so that it cannot be
+    // interpreted as specifying part of a code point, e.g. the string '\' +
+    // 'u' + '0' of length three.
     if (isPrintable(d_str[i]) && d_str[i] != '\\' && !useEscSequences)
     {
       str << static_cast<char>(d_str[i]);
@@ -289,6 +300,16 @@ std::string String::toString(bool useEscSequences) const {
     }
   }
   return str.str();
+}
+
+std::wstring String::toWString() const
+{
+  std::wstring res(size(), static_cast<wchar_t>(0));
+  for (std::size_t i = 0; i < size(); ++i)
+  {
+    res[i] = static_cast<wchar_t>(d_str[i]);
+  }
+  return res;
 }
 
 bool String::isLeq(const String &y) const
@@ -401,10 +422,31 @@ bool String::hasSuffix(const String& y) const
   return true;
 }
 
+String String::update(std::size_t i, const String& t) const
+{
+  if (i < size())
+  {
+    std::vector<unsigned> vec(d_str.begin(), d_str.begin() + i);
+    size_t remNum = size() - i;
+    size_t tnum = t.d_str.size();
+    if (tnum >= remNum)
+    {
+      vec.insert(vec.end(), t.d_str.begin(), t.d_str.begin() + remNum);
+    }
+    else
+    {
+      vec.insert(vec.end(), t.d_str.begin(), t.d_str.end());
+      vec.insert(vec.end(), d_str.begin() + i + tnum, d_str.end());
+    }
+    return String(vec);
+  }
+  return *this;
+}
+
 String String::replace(const String &s, const String &t) const {
   std::size_t ret = find(s);
   if (ret != std::string::npos) {
-    std::vector<unsigned int> vec;
+    std::vector<unsigned> vec;
     vec.insert(vec.begin(), d_str.begin(), d_str.begin() + ret);
     vec.insert(vec.end(), t.d_str.begin(), t.d_str.end());
     vec.insert(vec.end(), d_str.begin() + ret + s.size(), d_str.end());
@@ -416,16 +458,16 @@ String String::replace(const String &s, const String &t) const {
 
 String String::substr(std::size_t i) const {
   Assert(i <= size());
-  std::vector<unsigned int> ret_vec;
-  std::vector<unsigned int>::const_iterator itr = d_str.begin() + i;
+  std::vector<unsigned> ret_vec;
+  std::vector<unsigned>::const_iterator itr = d_str.begin() + i;
   ret_vec.insert(ret_vec.end(), itr, d_str.end());
   return String(ret_vec);
 }
 
 String String::substr(std::size_t i, std::size_t j) const {
   Assert(i + j <= size());
-  std::vector<unsigned int> ret_vec;
-  std::vector<unsigned int>::const_iterator itr = d_str.begin() + i;
+  std::vector<unsigned> ret_vec;
+  std::vector<unsigned>::const_iterator itr = d_str.begin() + i;
   ret_vec.insert(ret_vec.end(), itr, itr + j);
   return String(ret_vec);
 }
@@ -478,8 +520,22 @@ Rational String::toNumber() const
   return Rational(toString());
 }
 
-std::ostream &operator<<(std::ostream &os, const String &s) {
-  return os << "\"" << s.toString(true) << "\"";
+namespace strings {
+
+size_t StringHashFunction::operator()(const ::cvc5::String& s) const
+{
+  uint64_t ret = fnv1a::offsetBasis;
+  for (unsigned c : s.d_str)
+  {
+    ret = fnv1a::fnv1a_64(c, ret);
+  }
+  return static_cast<size_t>(ret);
 }
 
-}  // namespace CVC4
+}  // namespace strings
+
+std::ostream &operator<<(std::ostream &os, const String &s) {
+  return os << "\"" << s.toString() << "\"";
+}
+
+}  // namespace cvc5

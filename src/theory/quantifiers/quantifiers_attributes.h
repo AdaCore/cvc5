@@ -1,31 +1,28 @@
-/*********************                                                        */
-/*! \file quantifiers_attributes.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Andrew Reynolds, Mathias Preiner
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Attributes for the theory quantifiers
- **
- ** Attributes for the theory quantifiers.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Andrew Reynolds, Mathias Preiner
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Attributes for the theory quantifiers.
+ */
 
-#include "cvc4_private.h"
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__QUANTIFIERS_ATTRIBUTES_H
-#define CVC4__THEORY__QUANTIFIERS__QUANTIFIERS_ATTRIBUTES_H
+#ifndef CVC5__THEORY__QUANTIFIERS__QUANTIFIERS_ATTRIBUTES_H
+#define CVC5__THEORY__QUANTIFIERS__QUANTIFIERS_ATTRIBUTES_H
 
 #include "expr/attribute.h"
 #include "expr/node.h"
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
-
-class QuantifiersEngine;
 
 /** Attribute true for function definition quantifiers */
 struct FunDefAttributeId {};
@@ -88,11 +85,16 @@ struct SygusVarToTermAttributeId
 typedef expr::Attribute<SygusVarToTermAttributeId, Node>
     SygusVarToTermAttribute;
 
-namespace quantifiers {
+/**
+ * Attribute marked true for types that are used as abstraction types in
+ * the finite model finding for function definitions algorithm.
+ */
+struct AbsTypeFunDefAttributeId
+{
+};
+typedef expr::Attribute<AbsTypeFunDefAttributeId, bool> AbsTypeFunDefAttribute;
 
-/** Attribute priority for rewrite rules */
-//struct RrPriorityAttributeId {};
-//typedef expr::Attribute< RrPriorityAttributeId, uint64_t > RrPriorityAttribute;
+namespace quantifiers {
 
 /** This struct stores attributes for a single quantified formula */
 struct QAttributes
@@ -100,15 +102,19 @@ struct QAttributes
  public:
   QAttributes()
       : d_hasPattern(false),
+        d_hasPool(false),
         d_sygus(false),
         d_qinstLevel(-1),
         d_quant_elim(false),
-        d_quant_elim_partial(false)
+        d_quant_elim_partial(false),
+        d_isQuantBounded(false)
   {
   }
   ~QAttributes(){}
   /** does the quantified formula have a pattern? */
   bool d_hasPattern;
+  /** does the quantified formula have a pool? */
+  bool d_hasPool;
   /** if non-null, this quantified formula is a function definition for function
    * d_fundef_f */
   Node d_fundef_f;
@@ -118,17 +124,19 @@ struct QAttributes
   Node d_sygusSideCondition;
   /** stores the maximum instantiation level allowed for this quantified formula
    * (-1 means allow any) */
-  int d_qinstLevel;
+  int64_t d_qinstLevel;
   /** is this formula marked for quantifier elimination? */
   bool d_quant_elim;
   /** is this formula marked for partial quantifier elimination? */
   bool d_quant_elim_partial;
+  /** Is this formula internally generated and belonging to bounded integers? */
+  bool d_isQuantBounded;
   /** the instantiation pattern list for this quantified formula (its 3rd child)
    */
   Node d_ipl;
-  /** the name of this quantified formula */
+  /** The name of this quantified formula, used for :qid */
   Node d_name;
-  /** the quantifier id associated with this formula */
+  /** The (internal) quantifier id associated with this formula */
   Node d_qid_num;
   /** is this quantified formula a function definition? */
   bool isFunDef() const { return !d_fundef_f.isNull(); }
@@ -137,8 +145,7 @@ struct QAttributes
    * perform destructive updates (variable elimination, miniscoping, etc).
    *
    * A quantified formula is not standard if it is sygus, one for which
-   * we are performing quantifier elimination, is a function definition, or
-   * has a name.
+   * we are performing quantifier elimination, or is a function definition.
    */
   bool isStandard() const;
 };
@@ -151,20 +158,19 @@ struct QAttributes
 */
 class QuantAttributes
 {
-public:
-  QuantAttributes( QuantifiersEngine * qe );
+ public:
+  QuantAttributes();
   ~QuantAttributes(){}
   /** set user attribute
-  * This function applies an attribute
-  * This can be called when we mark expressions with attributes, e.g. (! q
-  * :attribute attr [node_values, str_value...]),
-  * It can also be called internally in various ways (for SyGus, quantifier
-  * elimination, etc.)
-  */
+   * This function applies an attribute
+   * This can be called when we mark expressions with attributes, e.g. (! q
+   * :attribute attr [nodeValues]),
+   * It can also be called internally in various ways (for SyGus, quantifier
+   * elimination, etc.)
+   */
   static void setUserAttribute(const std::string& attr,
-                               Node q,
-                               std::vector<Node>& node_values,
-                               std::string str_value);
+                               TNode q,
+                               const std::vector<Node>& nodeValues);
 
   /** compute quantifier attributes */
   static void computeQuantAttributes(Node q, QAttributes& qa);
@@ -185,22 +191,28 @@ public:
   static Node getFunDefBody( Node q );
   /** is quant elim annotation */
   static bool checkQuantElimAnnotation( Node ipl );
+  /** does q have a user-provided pattern? */
+  static bool hasPattern(Node q);
 
   /** is function definition */
   bool isFunDef( Node q );
   /** is sygus conjecture */
   bool isSygus( Node q );
   /** get instantiation level */
-  int getQuantInstLevel( Node q );
-  /** get rewrite rule priority */
-  int getRewriteRulePriority( Node q );
+  int64_t getQuantInstLevel(Node q);
   /** is quant elim */
   bool isQuantElim( Node q );
   /** is quant elim partial */
   bool isQuantElimPartial( Node q );
-  /** get quant id num */
+  /** is internal quantifier */
+  bool isQuantBounded(Node q) const;
+  /** get quant name, which is used for :qid */
+  Node getQuantName(Node q) const;
+  /** Print quantified formula q, possibly using its name, if it has one */
+  std::string quantToString(Node q) const;
+  /** get (internal) quant id num */
   int getQuantIdNum( Node q );
-  /** get quant id num */
+  /** get (internal)quant id num */
   Node getQuantIdNumNode( Node q );
 
   /** set instantiation level attr */
@@ -209,8 +221,6 @@ public:
   static void setInstantiationLevelAttr(Node n, Node qn, uint64_t level);
 
  private:
-  /** pointer to quantifiers engine */
-  QuantifiersEngine * d_quantEngine;
   /** cache of attributes */
   std::map< Node, QAttributes > d_qattr;
   /** function definitions */
@@ -219,6 +229,6 @@ public:
 
 }
 }
-}
+}  // namespace cvc5
 
 #endif

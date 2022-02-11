@@ -1,35 +1,32 @@
-/*********************                                                        */
-/*! \file sygus_grammar_norm.h
- ** \verbatim
- ** Top contributors (to current version):
- **   Haniel Barbosa, Andrew Reynolds, Tim King
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief class for simplifying SyGuS grammars after they are encoded into
- ** datatypes.
- **/
-#include "cvc4_private.h"
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Haniel Barbosa, Andrew Reynolds, Tim King
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Class for simplifying SyGuS grammars after they are encoded into datatypes.
+ */
+#include "cvc5_private.h"
 
-#ifndef CVC4__THEORY__QUANTIFIERS__SYGUS_GRAMMAR_NORM_H
-#define CVC4__THEORY__QUANTIFIERS__SYGUS_GRAMMAR_NORM_H
+#ifndef CVC5__THEORY__QUANTIFIERS__SYGUS_GRAMMAR_NORM_H
+#define CVC5__THEORY__QUANTIFIERS__SYGUS_GRAMMAR_NORM_H
 
 #include <map>
 #include <memory>
-#include <string>
 #include <vector>
 
-#include "expr/datatype.h"
 #include "expr/node.h"
 #include "expr/sygus_datatype.h"
-#include "expr/type.h"
 #include "expr/type_node.h"
-#include "theory/quantifiers/term_util.h"
+#include "smt/env_obj.h"
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace quantifiers {
 
@@ -127,10 +124,10 @@ class OpPosTrie
  * These lighweight transformations are always applied, independently of the
  * normalization option being enabled.
  */
-class SygusGrammarNorm
+class SygusGrammarNorm : protected EnvObj
 {
  public:
-  SygusGrammarNorm(QuantifiersEngine* qe);
+  SygusGrammarNorm(Env& env, TermDbSygus* tds);
   ~SygusGrammarNorm() {}
   /** creates a normalized typenode from a given one.
    *
@@ -198,8 +195,7 @@ class SygusGrammarNorm
      * The types of the arguments of "cons" are recursively normalized
      */
     void addConsInfo(SygusGrammarNorm* sygus_norm,
-                     const DTypeConstructor& cons,
-                     std::shared_ptr<SygusPrintCallback> spc);
+                     const DTypeConstructor& cons);
 
     /** initializes a datatype with the information in the type object
      *
@@ -366,8 +362,6 @@ class SygusGrammarNorm
 
   }; /* class TransfChain */
 
-  /** reference to quantifier engine */
-  QuantifiersEngine* d_qe;
   /** sygus term database associated with this utility */
   TermDbSygus* d_tds;
   /** List of variable inputs of function-to-synthesize.
@@ -377,9 +371,9 @@ class SygusGrammarNorm
    */
   TNode d_sygus_vars;
   /* Datatypes to be resolved */
-  std::vector<Datatype> d_dt_all;
+  std::vector<DType> d_dt_all;
   /* Types to be resolved */
-  std::set<Type> d_unres_t_all;
+  std::set<TypeNode> d_unres_t_all;
   /* Associates type nodes with OpPosTries */
   std::map<TypeNode, OpPosTrie> d_tries;
   /* Map of type nodes into their identity operators (\lambda x. x) */
@@ -433,6 +427,6 @@ class SygusGrammarNorm
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace CVC4
+}  // namespace cvc5
 
 #endif

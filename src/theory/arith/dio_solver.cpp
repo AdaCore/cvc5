@@ -1,84 +1,79 @@
-/*********************                                                        */
-/*! \file dio_solver.cpp
- ** \verbatim
- ** Top contributors (to current version):
- **   Tim King, Mathias Preiner, Morgan Deters
- ** This file is part of the CVC4 project.
- ** Copyright (c) 2009-2020 by the authors listed in the file AUTHORS
- ** in the top-level source directory) and their institutional affiliations.
- ** All rights reserved.  See the file COPYING in the top-level source
- ** directory for licensing information.\endverbatim
- **
- ** \brief Diophantine equation solver
- **
- ** A Diophantine equation solver for the theory of arithmetic.
- **/
+/******************************************************************************
+ * Top contributors (to current version):
+ *   Tim King, Mathias Preiner, Morgan Deters
+ *
+ * This file is part of the cvc5 project.
+ *
+ * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * in the top-level source directory and their institutional affiliations.
+ * All rights reserved.  See the file COPYING in the top-level source
+ * directory for licensing information.
+ * ****************************************************************************
+ *
+ * Diophantine equation solver
+ *
+ * A Diophantine equation solver for the theory of arithmetic.
+ */
 #include "theory/arith/dio_solver.h"
 
 #include <iostream>
 
 #include "base/output.h"
+#include "expr/skolem_manager.h"
 #include "options/arith_options.h"
+#include "smt/env.h"
 #include "smt/smt_statistics_registry.h"
+#include "theory/arith/partial_model.h"
 
 using namespace std;
 
-namespace CVC4 {
+namespace cvc5 {
 namespace theory {
 namespace arith {
 
 inline Node makeIntegerVariable(){
-  NodeManager* curr = NodeManager::currentNM();
-  return curr->mkSkolem("intvar", curr->integerType(), "is an integer variable created by the dio solver");
+  NodeManager* nm = NodeManager::currentNM();
+  SkolemManager* sm = nm->getSkolemManager();
+  return sm->mkDummySkolem("intvar",
+                           nm->integerType(),
+                           "is an integer variable created by the dio solver");
 }
 
-DioSolver::DioSolver(context::Context* ctxt)
-    : d_lastUsedProofVariable(ctxt, 0),
-      d_inputConstraints(ctxt),
-      d_nextInputConstraintToEnqueue(ctxt, 0),
-      d_trail(ctxt),
-      d_subs(ctxt),
+DioSolver::DioSolver(Env& env)
+    : EnvObj(env),
+      d_lastUsedProofVariable(context(), 0),
+      d_inputConstraints(context()),
+      d_nextInputConstraintToEnqueue(context(), 0),
+      d_trail(context()),
+      d_subs(context()),
       d_currentF(),
-      d_savedQueue(ctxt),
-      d_savedQueueIndex(ctxt, 0),
-      d_conflictIndex(ctxt),
-      d_maxInputCoefficientLength(ctxt, 0),
-      d_usedDecomposeIndex(ctxt, false),
-      d_lastPureSubstitution(ctxt, 0),
-      d_pureSubstitionIter(ctxt, 0),
-      d_decompositionLemmaQueue(ctxt) {}
-
-DioSolver::Statistics::Statistics() :
-  d_conflictCalls("theory::arith::dio::conflictCalls",0),
-  d_cutCalls("theory::arith::dio::cutCalls",0),
-  d_cuts("theory::arith::dio::cuts",0),
-  d_conflicts("theory::arith::dio::conflicts",0),
-  d_conflictTimer("theory::arith::dio::conflictTimer"),
-  d_cutTimer("theory::arith::dio::cutTimer")
+      d_savedQueue(context()),
+      d_savedQueueIndex(context(), 0),
+      d_conflictIndex(context()),
+      d_maxInputCoefficientLength(context(), 0),
+      d_usedDecomposeIndex(context(), false),
+      d_lastPureSubstitution(context(), 0),
+      d_pureSubstitionIter(context(), 0),
+      d_decompositionLemmaQueue(context())
 {
-  smtStatisticsRegistry()->registerStat(&d_conflictCalls);
-  smtStatisticsRegistry()->registerStat(&d_cutCalls);
-
-  smtStatisticsRegistry()->registerStat(&d_cuts);
-  smtStatisticsRegistry()->registerStat(&d_conflicts);
-
-  smtStatisticsRegistry()->registerStat(&d_conflictTimer);
-  smtStatisticsRegistry()->registerStat(&d_cutTimer);
 }
 
-DioSolver::Statistics::~Statistics(){
-  smtStatisticsRegistry()->unregisterStat(&d_conflictCalls);
-  smtStatisticsRegistry()->unregisterStat(&d_cutCalls);
-
-  smtStatisticsRegistry()->unregisterStat(&d_cuts);
-  smtStatisticsRegistry()->unregisterStat(&d_conflicts);
-
-  smtStatisticsRegistry()->unregisterStat(&d_conflictTimer);
-  smtStatisticsRegistry()->unregisterStat(&d_cutTimer);
+DioSolver::Statistics::Statistics()
+    : d_conflictCalls(smtStatisticsRegistry().registerInt(
+        "theory::arith::dio::conflictCalls")),
+      d_cutCalls(
+          smtStatisticsRegistry().registerInt("theory::arith::dio::cutCalls")),
+      d_cuts(smtStatisticsRegistry().registerInt("theory::arith::dio::cuts")),
+      d_conflicts(
+          smtStatisticsRegistry().registerInt("theory::arith::dio::conflicts")),
+      d_conflictTimer(smtStatisticsRegistry().registerTimer(
+          "theory::arith::dio::conflictTimer")),
+      d_cutTimer(
+          smtStatisticsRegistry().registerTimer("theory::arith::dio::cutTimer"))
+{
 }
 
 bool DioSolver::queueConditions(TrailIndex t){
-  /* debugPrintTrail(t); */
   Debug("queueConditions") << !inConflict() << std::endl;
   Debug("queueConditions") << gcdIsOne(t) << std::endl;
   Debug("queueConditions") << !debugAnySubstitionApplies(t) << std::endl;
@@ -197,7 +192,7 @@ Node DioSolver::proveIndex(TrailIndex i){
   const Polynomial& proof = d_trail[i].d_proof;
   Assert(!proof.isConstant());
 
-  NodeBuilder<> nb(kind::AND);
+  NodeBuilder nb(kind::AND);
   for(Polynomial::iterator iter = proof.begin(), end = proof.end(); iter!= end; ++iter){
     Monomial m = (*iter);
     Assert(!m.isConstant());
@@ -232,8 +227,13 @@ bool DioSolver::anyCoefficientExceedsMaximum(TrailIndex j) const{
     nmonos >= 2 &&
     length > d_maxInputCoefficientLength + MAX_GROWTH_RATE;
   if(Debug.isOn("arith::dio::max") && result){
-    Debug("arith::dio::max") << "about to drop:";
-    debugPrintTrail(j);
+
+    const SumPair& eq = d_trail[j].d_eq;
+    const Polynomial& proof = d_trail[j].d_proof;
+
+    Debug("arith::dio::max") << "about to drop:" << std::endl;
+    Debug("arith::dio::max") << "d_trail[" << j << "].d_eq = " << eq.getNode() << std::endl;
+    Debug("arith::dio::max") << "d_trail[" << j << "].d_proof = " << proof.getNode() << std::endl;
   }
   return result;
 }
@@ -302,7 +302,7 @@ bool DioSolver::queueEmpty() const{
 }
 
 Node DioSolver::columnGcdIsOne() const{
-  std::unordered_map<Node, Integer, NodeHashFunction> gcdMap;
+  std::unordered_map<Node, Integer> gcdMap;
 
   std::deque<TrailIndex>::const_iterator iter, end;
   for(iter = d_currentF.begin(), end = d_currentF.end(); iter != end; ++iter){
@@ -614,7 +614,7 @@ std::pair<DioSolver::SubIndex, DioSolver::TrailIndex> DioSolver::solveIndex(DioS
 
   Debug("arith::dio") << "before solveIndex("<<i<<":"<<si.getNode()<< ")" << endl;
 
-#ifdef CVC4_ASSERTIONS
+#ifdef CVC5_ASSERTIONS
   const Polynomial& p = si.getPolynomial();
 #endif
 
@@ -650,7 +650,7 @@ std::pair<DioSolver::SubIndex, DioSolver::TrailIndex> DioSolver::decomposeIndex(
 
   Debug("arith::dio") << "before decomposeIndex("<<i<<":"<<si.getNode()<< ")" << endl;
 
-#ifdef CVC4_ASSERTIONS
+#ifdef CVC5_ASSERTIONS
   const Polynomial& p = si.getPolynomial();
 #endif
 
@@ -780,14 +780,6 @@ bool DioSolver::gcdIsOne(DioSolver::TrailIndex i){
   return eq.gcd() == Integer(1);
 }
 
-void DioSolver::debugPrintTrail(DioSolver::TrailIndex i) const{
-  const SumPair& eq = d_trail[i].d_eq;
-  const Polynomial& proof = d_trail[i].d_proof;
-
-  Message() << "d_trail["<<i<<"].d_eq = " << eq.getNode() << endl;
-  Message() << "d_trail["<<i<<"].d_proof = " << proof.getNode() << endl;
-}
-
 void DioSolver::subAndReduceCurrentFByIndex(DioSolver::SubIndex subIndex){
   size_t N = d_currentF.size();
 
@@ -820,18 +812,21 @@ void DioSolver::subAndReduceCurrentFByIndex(DioSolver::SubIndex subIndex){
 }
 
 void DioSolver::addTrailElementAsLemma(TrailIndex i) {
-  if(options::exportDioDecompositions()){
+  if (options().arith.exportDioDecompositions)
+  {
     d_decompositionLemmaQueue.push(i);
   }
 }
 
 Node DioSolver::trailIndexToEquality(TrailIndex i) const {
   const SumPair& sp = d_trail[i].d_eq;
-  Node zero = mkRationalNode(0);
-  Node eq = (sp.getNode()).eqNode(zero);
+  Node n = sp.getNode();
+  Node zero =
+      NodeManager::currentNM()->mkConstRealOrInt(n.getType(), Rational(0));
+  Node eq = n.eqNode(zero);
   return eq;
 }
 
-}/* CVC4::theory::arith namespace */
-}/* CVC4::theory namespace */
-}/* CVC4 namespace */
+}  // namespace arith
+}  // namespace theory
+}  // namespace cvc5
