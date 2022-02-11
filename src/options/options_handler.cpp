@@ -459,7 +459,7 @@ void OptionsHandler::showCopyright(const std::string& flag, bool value)
 void OptionsHandler::showVersion(const std::string& flag, bool value)
 {
   if (!value) return;
-  d_options->base.out << Configuration::about() << std::endl;
+  d_options->base.out << Configuration::short_about() << std::endl;
 }
 
 void OptionsHandler::showDebugTags(const std::string& flag, bool value)
