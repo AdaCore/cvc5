@@ -18,7 +18,7 @@
 
 include(deps-helper)
 
-find_file(ANTLR3_JAR NAMES antlr-3.4-complete.jar PATH_SUFFIXES share/java/)
+find_file(ANTLR3_JAR NAMES antlr-3.4-complete.jar PATH_SUFFIXES java/)
 find_path(ANTLR3_INCLUDE_DIR NAMES antlr3.h)
 find_library(ANTLR3_LIBRARIES NAMES antlr3c)
 

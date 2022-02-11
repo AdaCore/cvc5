@@ -273,7 +273,7 @@ endif()
 
 # This needs to be enabled here rather than in subdirectory test in order to
 # allow calling ctest from the root build directory.
-enable_testing()
+# enable_testing()
 
 #-----------------------------------------------------------------------------#
 # Check options, find packages and configure build.
@@ -481,9 +481,9 @@ if(BUILD_DOCS)
   add_subdirectory(docs)
 endif()
 
-add_subdirectory(test)
+# add_subdirectory(test)
 
-include(target-graphs)
+# include(target-graphs)
 
 #-----------------------------------------------------------------------------#
 # Package configuration
