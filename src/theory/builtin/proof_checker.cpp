@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andrew Reynolds, Aina Niemetz
+ *   Andrew Reynolds, Hanna Lachnitt, Mathias Preiner
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,9 +23,9 @@
 #include "theory/theory.h"
 #include "util/rational.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace builtin {
 
@@ -58,6 +58,8 @@ void BuiltinProofRuleChecker::registerTo(ProofChecker* pc)
   pc->registerTrustedChecker(PfRule::TRUST_SUBS_MAP, this, 1);
   pc->registerTrustedChecker(PfRule::TRUST_SUBS_EQ, this, 3);
   pc->registerTrustedChecker(PfRule::THEORY_INFERENCE, this, 3);
+  // external proof rules
+  pc->registerChecker(PfRule::LFSC_RULE, this);
   pc->registerChecker(PfRule::ALETHE_RULE, this);
 }
 
@@ -382,6 +384,12 @@ Node BuiltinProofRuleChecker::checkInternal(PfRule id,
     Assert(args[0].getType().isBoolean());
     return args[0];
   }
+  else if (id == PfRule::LFSC_RULE || id == PfRule::ALETHE_RULE)
+  {
+    Assert(args.size() > 1);
+    Assert(args[0].getType().isInteger());
+    return args[1];
+  }
   else if (id == PfRule::ANNOTATION)
   {
     Assert(children.size() == 1);
@@ -411,4 +419,4 @@ Node BuiltinProofRuleChecker::mkTheoryIdNode(TheoryId tid)
 
 }  // namespace builtin
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

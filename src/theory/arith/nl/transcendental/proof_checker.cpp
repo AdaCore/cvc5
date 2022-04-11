@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Gereon Kremer, Aina Niemetz
+ *   Gereon Kremer, Andrew Reynolds, Aina Niemetz
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,9 +20,9 @@
 #include "theory/arith/nl/transcendental/taylor_generator.h"
 #include "theory/evaluator.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
@@ -47,13 +47,13 @@ Node mkBounds(TNode t, TNode lb, TNode ub)
 Node mkSecant(TNode t, TNode l, TNode u, TNode evall, TNode evalu)
 {
   NodeManager* nm = NodeManager::currentNM();
-  return nm->mkNode(Kind::PLUS,
+  return nm->mkNode(Kind::ADD,
                     evall,
                     nm->mkNode(Kind::MULT,
                                nm->mkNode(Kind::DIVISION,
-                                          nm->mkNode(Kind::MINUS, evall, evalu),
-                                          nm->mkNode(Kind::MINUS, l, u)),
-                               nm->mkNode(Kind::MINUS, t, l)));
+                                          nm->mkNode(Kind::SUB, evall, evalu),
+                                          nm->mkNode(Kind::SUB, l, u)),
+                               nm->mkNode(Kind::SUB, t, l)));
 }
 
 }  // namespace
@@ -128,7 +128,7 @@ Node TranscendentalProofRuleChecker::checkInternal(
     Node e = nm->mkNode(Kind::EXPONENTIAL, args[0]);
     return nm->mkNode(OR,
                       nm->mkNode(LEQ, args[0], zero),
-                      nm->mkNode(GT, e, nm->mkNode(PLUS, args[0], one)));
+                      nm->mkNode(GT, e, nm->mkNode(ADD, args[0], one)));
   }
   else if (id == PfRule::ARITH_TRANS_EXP_ZERO)
   {
@@ -192,19 +192,24 @@ Node TranscendentalProofRuleChecker::checkInternal(
   else if (id == PfRule::ARITH_TRANS_EXP_APPROX_BELOW)
   {
     Assert(children.empty());
-    Assert(args.size() == 2);
+    Assert(args.size() == 3);
     Assert(args[0].isConst() && args[0].getType().isInteger());
-    Assert(args[1].getType().isReal());
+    Assert(args[1].isConst() && args[1].getType().isRealOrInt());
+    Assert(args[2].getType().isReal());
     std::uint64_t d =
         args[0].getConst<Rational>().getNumerator().toUnsignedInt();
-    Node t = args[1];
+    Node c = args[1];
+    Node t = args[2];
     TaylorGenerator tg;
     TaylorGenerator::ApproximationBounds bounds;
-    tg.getPolynomialApproximationBounds(Kind::EXPONENTIAL, d, bounds);
+    tg.getPolynomialApproximationBoundForArg(Kind::EXPONENTIAL, c, d, bounds);
     Evaluator eval(nullptr);
-    Node evalt = eval.eval(bounds.d_lower, {tg.getTaylorVariable()}, {t});
+    Node evalt = eval.eval(bounds.d_lower, {tg.getTaylorVariable()}, {c});
     return nm->mkNode(
-        Kind::GEQ, std::vector<Node>{nm->mkNode(Kind::EXPONENTIAL, t), evalt});
+        Kind::IMPLIES,
+        nm->mkNode(Kind::GEQ, t, c),
+        nm->mkNode(Kind::GEQ,
+                   std::vector<Node>{nm->mkNode(Kind::EXPONENTIAL, t), evalt}));
   }
   else if (id == PfRule::ARITH_TRANS_SINE_BOUNDS)
   {
@@ -232,10 +237,10 @@ Node TranscendentalProofRuleChecker::checkInternal(
                 nm->mkNode(Kind::LEQ, x, pi),
             }),
             x.eqNode(y),
-            x.eqNode(
-                nm->mkNode(Kind::PLUS,
-                           y,
-                           nm->mkNode(Kind::MULT, nm->mkConstReal(2), s, pi)))),
+            x.eqNode(nm->mkNode(
+                Kind::ADD,
+                y,
+                nm->mkNode(Kind::MULT, nm->mkConstReal(2), s, pi)))),
         nm->mkNode(Kind::SINE, y).eqNode(nm->mkNode(Kind::SINE, x))});
   }
   else if (id == PfRule::ARITH_TRANS_SINE_SYMMETRY)
@@ -245,7 +250,7 @@ Node TranscendentalProofRuleChecker::checkInternal(
     Assert(args[0].getType().isReal());
     Node s1 = nm->mkNode(Kind::SINE, args[0]);
     Node s2 = nm->mkNode(Kind::SINE, nm->mkNode(Kind::MULT, mone, args[0]));
-    return nm->mkNode(PLUS, s1, s2).eqNode(zero);
+    return nm->mkNode(ADD, s1, s2).eqNode(zero);
   }
   else if (id == PfRule::ARITH_TRANS_SINE_TANGENT_ZERO)
   {
@@ -271,10 +276,10 @@ Node TranscendentalProofRuleChecker::checkInternal(
         AND,
         nm->mkNode(IMPLIES,
                    nm->mkNode(GT, args[0], mpi),
-                   nm->mkNode(GT, s, nm->mkNode(MINUS, mpi, args[0]))),
+                   nm->mkNode(GT, s, nm->mkNode(SUB, mpi, args[0]))),
         nm->mkNode(IMPLIES,
                    nm->mkNode(LT, args[0], pi),
-                   nm->mkNode(LT, s, nm->mkNode(MINUS, pi, args[0]))));
+                   nm->mkNode(LT, s, nm->mkNode(SUB, pi, args[0]))));
   }
   else if (id == PfRule::ARITH_TRANS_SINE_APPROX_ABOVE_NEG)
   {
@@ -389,4 +394,4 @@ Node TranscendentalProofRuleChecker::checkInternal(
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

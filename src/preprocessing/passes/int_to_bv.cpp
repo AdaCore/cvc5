@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andres Noetzli, Yoni Zohar, Alex Ozdemir
+ *   Andres Noetzli, Yoni Zohar, Aina Niemetz
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -35,12 +35,12 @@
 #include "util/bitvector.h"
 #include "util/rational.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
 
 using namespace std;
-using namespace cvc5::theory;
+using namespace cvc5::internal::theory;
 
 
 namespace {
@@ -69,7 +69,7 @@ Node intToBVMakeBinary(TNode n, NodeMap& cache)
       result = current;
     }
     else if (current.getNumChildren() > 2
-             && (current.getKind() == kind::PLUS
+             && (current.getKind() == kind::ADD
                  || current.getKind() == kind::MULT
                  || current.getKind() == kind::NONLINEAR_MULT))
     {
@@ -149,7 +149,7 @@ Node IntToBV::intToBV(TNode n, NodeMap& cache)
       {
         switch (newKind)
         {
-          case kind::PLUS:
+          case kind::ADD:
             Assert(children.size() == 2);
             newKind = kind::BITVECTOR_ADD;
             max = max + 1;
@@ -160,12 +160,12 @@ Node IntToBV::intToBV(TNode n, NodeMap& cache)
             newKind = kind::BITVECTOR_MULT;
             max = max * 2;
             break;
-          case kind::MINUS:
+          case kind::SUB:
             Assert(children.size() == 2);
             newKind = kind::BITVECTOR_SUB;
             max = max + 1;
             break;
-          case kind::UMINUS:
+          case kind::NEG:
             Assert(children.size() == 1);
             newKind = kind::BITVECTOR_NEG;
             max = max + 1;
@@ -234,7 +234,7 @@ Node IntToBV::intToBV(TNode n, NodeMap& cache)
           Node bv2int = nm->mkNode(
               kind::ITE,
               nm->mkNode(kind::BITVECTOR_SLT, result, nm->mkConst(bvzero)),
-              nm->mkNode(kind::UMINUS, negResult),
+              nm->mkNode(kind::NEG, negResult),
               nm->mkNode(kind::BITVECTOR_TO_NAT, result));
           d_preprocContext->addSubstitution(current, bv2int);
         }
@@ -288,4 +288,4 @@ PreprocessingPassResult IntToBV::applyInternal(
 
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace cvc5
+}  // namespace cvc5::internal

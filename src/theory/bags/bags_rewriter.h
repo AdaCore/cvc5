@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Mudathir Mohamed, Gereon Kremer
+ *   Mudathir Mohamed, Aina Niemetz, Gereon Kremer
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,7 +22,7 @@
 #include "theory/theory_rewriter.h"
 #include "util/statistics_stats.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace bags {
 
@@ -186,7 +186,6 @@ class BagsRewriter : public TheoryRewriter
   /**
    * rewrites for n include:
    * - (bag.card (bag x c)) = c where c is a constant > 0
-   * - (bag.card (union-disjoint A B)) = (+ (bag.card A) (bag.card B))
    * - otherwise = n
    */
   BagsRewriteResponse rewriteCard(const TNode& n) const;
@@ -230,6 +229,16 @@ class BagsRewriter : public TheoryRewriter
 
   /**
    *  rewrites for n include:
+   *  - (bag.filter p (as bag.empty (Bag T)) = (as bag.empty (Bag T))
+   *  - (bag.filter p (bag x y)) = (ite (p x) (bag x y) (as bag.empty (Bag T)))
+   *  - (bag.filter p (bag.union_disjoint A B)) =
+   *       (bag.union_disjoint (bag.filter p A) (bag.filter p B))
+   *  where p: T -> Bool
+   */
+  BagsRewriteResponse postRewriteFilter(const TNode& n) const;
+
+  /**
+   *  rewrites for n include:
    *  - (bag.fold f t (as bag.empty (Bag T1))) = t
    *  - (bag.fold f t (bag x n)) = (f t ... (f t (f t x))) n times, where n > 0
    *  - (bag.fold f t (bag.union_disjoint A B)) =
@@ -237,6 +246,16 @@ class BagsRewriter : public TheoryRewriter
    *  where f: T1 -> T2 -> T2
    */
   BagsRewriteResponse postRewriteFold(const TNode& n) const;
+  /**
+   *  rewrites for n include:
+   *  - (bag.product A (as bag.empty T2)) = (as bag.empty T)
+   *  - (bag.product (as bag.empty T2)) = (f t ... (f t (f t x))) n times, where
+   * n > 0
+   *  - (bag.fold f t (bag.union_disjoint A B)) =
+   *       (bag.fold f (bag.fold f t A) B) where A < B to break symmetry
+   *  where f: T1 -> T2 -> T2
+   */
+  BagsRewriteResponse postRewriteProduct(const TNode& n) const;
 
  private:
   /** Reference to the rewriter statistics. */
@@ -249,6 +268,6 @@ class BagsRewriter : public TheoryRewriter
 
 }  // namespace bags
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__BAGS__THEORY_BAGS_REWRITER_H */

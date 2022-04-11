@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -23,7 +23,7 @@
 #include "expr/node.h"
 #include "theory/valuation.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 class TheoryModel;
@@ -57,9 +57,11 @@ class DifficultyManager
    *
    * @param rse Mapping from literals to the preprocessed assertion that was
    * the reason why that literal was relevant in the current context
+   * @param inFullEffortCheck Whether we are in a full effort check when the
+   * lemma was sent.
    * @param lem The lemma
    */
-  void notifyLemma(Node lem);
+  void notifyLemma(Node lem, bool inFullEffortCheck);
   /**
    * Notify that `m` is a (candidate) model. This increments the difficulty
    * of assertions that are not satisfied by that model.
@@ -87,6 +89,6 @@ class DifficultyManager
 };
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__DIFFICULTY_MANAGER__H */

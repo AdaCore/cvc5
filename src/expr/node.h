@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -37,7 +37,7 @@
 #include "util/hash.h"
 #include "util/utility.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 class TypeNode;
 class NodeManager;
@@ -127,25 +127,25 @@ typedef NodeTemplate<true> Node;
  */
 typedef NodeTemplate<false> TNode;
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 namespace std {
 
 template <>
-struct hash<cvc5::Node>
+struct hash<cvc5::internal::Node>
 {
-  size_t operator()(const cvc5::Node& node) const;
+  size_t operator()(const cvc5::internal::Node& node) const;
 };
 
 template <>
-struct hash<cvc5::TNode>
+struct hash<cvc5::internal::TNode>
 {
-  size_t operator()(const cvc5::TNode& node) const;
+  size_t operator()(const cvc5::internal::TNode& node) const;
 };
 
 }  // namespace std
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace expr {
 
 class NodeValue;
@@ -199,8 +199,8 @@ class NodeTemplate {
 
   friend class NodeBuilder;
 
-  friend class ::cvc5::expr::attr::AttributeManager;
-  friend struct ::cvc5::expr::attr::SmtAttributes;
+  friend class ::cvc5::internal::expr::attr::AttributeManager;
+  friend struct ::cvc5::internal::expr::attr::SmtAttributes;
 
   /**
    * Assigns the expression value and does reference counting. No assumptions
@@ -690,10 +690,10 @@ public:
    * Returns the iterator pointing to the first child, if the node's
    * kind is the same as the parameter, otherwise returns the iterator
    * pointing to the node itself.  This is useful if you want to
-   * pretend to iterate over a "unary" PLUS, for instance, since unary
-   * PLUSes don't exist---begin(PLUS) will give an iterator over the
-   * children if the node's a PLUS node, otherwise give an iterator
-   * over the node itself, as if it were a unary PLUS.
+   * pretend to iterate over a "unary" ADD, for instance, since unary
+   * PLUSes don't exist---begin(ADD) will give an iterator over the
+   * children if the node's an ADD node, otherwise give an iterator
+   * over the node itself, as if it were a unary ADD.
    * @param kind the kind to match
    * @return the kinded_iterator iterating over this Node (if its kind
    * is not the passed kind) or its children
@@ -708,10 +708,10 @@ public:
    * beyond the last one), if the node's kind is the same as the
    * parameter, otherwise returns the iterator pointing to the
    * one-of-the-node-itself.  This is useful if you want to pretend to
-   * iterate over a "unary" PLUS, for instance, since unary PLUSes
-   * don't exist---begin(PLUS) will give an iterator over the children
-   * if the node's a PLUS node, otherwise give an iterator over the
-   * node itself, as if it were a unary PLUS.
+   * iterate over a "unary" ADD, for instance, since unary PLUSes
+   * don't exist---begin(ADD) will give an iterator over the children
+   * if the node's an ADD node, otherwise give an iterator over the
+   * node itself, as if it were a unary ADD.
    * @param kind the kind to match
    * @return the kinded_iterator pointing off-the-end of this Node (if
    * its kind is not the passed kind) or off-the-end of its children
@@ -766,10 +766,10 @@ public:
    * Returns the iterator pointing to the first child, if the node's
    * kind is the same as the parameter, otherwise returns the iterator
    * pointing to the node itself.  This is useful if you want to
-   * pretend to iterate over a "unary" PLUS, for instance, since unary
-   * PLUSes don't exist---begin(PLUS) will give an iterator over the
-   * children if the node's a PLUS node, otherwise give an iterator
-   * over the node itself, as if it were a unary PLUS.
+   * pretend to iterate over a "unary" ADD, for instance, since unary
+   * PLUSes don't exist---begin(ADD) will give an iterator over the
+   * children if the node's an ADD node, otherwise give an iterator
+   * over the node itself, as if it were a unary ADD.
    * @param kind the kind to match
    * @return the kinded_iterator iterating over this Node (if its kind
    * is not the passed kind) or its children
@@ -784,10 +784,10 @@ public:
    * beyond the last one), if the node's kind is the same as the
    * parameter, otherwise returns the iterator pointing to the
    * one-of-the-node-itself.  This is useful if you want to pretend to
-   * iterate over a "unary" PLUS, for instance, since unary PLUSes
-   * don't exist---begin(PLUS) will give an iterator over the children
-   * if the node's a PLUS node, otherwise give an iterator over the
-   * node itself, as if it were a unary PLUS.
+   * iterate over a "unary" ADD, for instance, since unary PLUSes
+   * don't exist---begin(ADD) will give an iterator over the children
+   * if the node's an ADD node, otherwise give an iterator over the
+   * node itself, as if it were a unary ADD.
    * @param kind the kind to match
    * @return the kinded_iterator pointing off-the-end of this Node (if
    * its kind is not the passed kind) or off-the-end of its children
@@ -946,12 +946,12 @@ std::ostream& operator<<(
   return out;
 }
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 //#include "expr/attribute.h"
 #include "expr/node_manager.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 using TNodePairHashFunction =
     PairHashFunction<TNode, TNode, std::hash<TNode>, std::hash<TNode>>;
@@ -1407,6 +1407,6 @@ Node NodeTemplate<ref_count>::substitute(
   }
 }
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__NODE_H */

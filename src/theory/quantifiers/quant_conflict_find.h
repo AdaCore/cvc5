@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andrew Reynolds, Tim King, Morgan Deters
+ *   Andrew Reynolds, Tim King, Mathias Preiner
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -26,7 +26,7 @@
 #include "expr/node_trie.h"
 #include "theory/quantifiers/quant_module.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -52,7 +52,7 @@ class MatchGen {
     typ_tconstraint,
     typ_tsym,
   };
-  void debugPrintType( const char * c, short typ, bool isTrace = false );
+  void debugPrintType( const char * c, short typ);
 
   bool d_tgt;
   bool d_tgt_orig;
@@ -124,7 +124,7 @@ class MatchGen {
 class QuantInfo : protected EnvObj
 {
  public:
-  typedef std::map<size_t, MatchGen*> VarMgMap;
+  using VarMgMap = std::map<size_t, std::unique_ptr<MatchGen>>;
   QuantInfo(Env& env, QuantConflictFind* p, Node q);
   ~QuantInfo();
   /** get quantified formula */
@@ -312,6 +312,6 @@ std::ostream& operator<<(std::ostream& os, const QuantConflictFind::Effort& e);
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif

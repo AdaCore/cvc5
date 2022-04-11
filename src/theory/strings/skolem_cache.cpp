@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Yoni Zohar
+ *   Andrew Reynolds, Andres Noetzli, Aina Niemetz
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,9 +24,9 @@
 #include "theory/strings/word.h"
 #include "util/rational.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace strings {
 
@@ -198,7 +198,7 @@ SkolemCache::normalizeStringSkolem(SkolemId id, Node a, Node b)
     id = SK_SUFFIX_REM;
     Node pre = mkSkolemCached(a, b, SK_FIRST_CTN_PRE, "pre");
     b = nm->mkNode(
-        PLUS, nm->mkNode(STRING_LENGTH, pre), nm->mkNode(STRING_LENGTH, b));
+        ADD, nm->mkNode(STRING_LENGTH, pre), nm->mkNode(STRING_LENGTH, b));
   }
   else if (id == SK_ID_V_SPT || id == SK_ID_C_SPT)
   {
@@ -211,7 +211,7 @@ SkolemCache::normalizeStringSkolem(SkolemId id, Node a, Node b)
     // SK_ID_*_SPT_REV(x, y) ---> SK_PREFIX(x, (- (str.len x) (str.len y)))
     id = SK_PREFIX;
     b = nm->mkNode(
-        MINUS, nm->mkNode(STRING_LENGTH, a), nm->mkNode(STRING_LENGTH, b));
+        SUB, nm->mkNode(STRING_LENGTH, a), nm->mkNode(STRING_LENGTH, b));
   }
   else if (id == SK_ID_VC_SPT)
   {
@@ -224,7 +224,7 @@ SkolemCache::normalizeStringSkolem(SkolemId id, Node a, Node b)
     // SK_ID_VC_SPT_REV(x, y) ---> SK_PREFIX(x, (- (str.len x) 1))
     id = SK_PREFIX;
     b = nm->mkNode(
-        MINUS, nm->mkNode(STRING_LENGTH, a), nm->mkConstInt(Rational(1)));
+        SUB, nm->mkNode(STRING_LENGTH, a), nm->mkConstInt(Rational(1)));
   }
   else if (id == SK_ID_DC_SPT)
   {
@@ -264,9 +264,9 @@ SkolemCache::normalizeStringSkolem(SkolemId id, Node a, Node b)
     bool isRev = (id == SK_ID_V_UNIFIED_SPT_REV);
     Node la = nm->mkNode(STRING_LENGTH, a);
     Node lb = nm->mkNode(STRING_LENGTH, b);
-    Node ta = isRev ? utils::mkPrefix(a, nm->mkNode(MINUS, la, lb))
+    Node ta = isRev ? utils::mkPrefix(a, nm->mkNode(SUB, la, lb))
                     : utils::mkSuffix(a, lb);
-    Node tb = isRev ? utils::mkPrefix(b, nm->mkNode(MINUS, lb, la))
+    Node tb = isRev ? utils::mkPrefix(b, nm->mkNode(SUB, lb, la))
                     : utils::mkSuffix(b, la);
     id = SK_PURIFY;
     // SK_ID_V_UNIFIED_SPT(x,y) --->
@@ -338,4 +338,4 @@ Node SkolemCache::mkSkolemFun(SkolemFunId id, TypeNode tn, Node a, Node b)
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

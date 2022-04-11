@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andrew Reynolds
+ *   Andrew Reynolds, Aina Niemetz, Gereon Kremer
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,7 +22,7 @@
 
 #include "expr/node.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 /**
  * Helper substitution class. Stores a substitution in parallel vectors
@@ -58,13 +58,13 @@ class Subs
   /** Append the substitution s to this */
   void append(Subs& s);
   /** Return the result of this substitution on n */
-  Node apply(Node n, bool doRewrite = false) const;
+  Node apply(Node n) const;
   /** Return the result of the reverse of this substitution on n */
-  Node rapply(Node n, bool doRewrite = false) const;
+  Node rapply(Node n) const;
   /** Apply this substitution to all nodes in the range of s */
-  void applyToRange(Subs& s, bool doRewrite = false) const;
+  void applyToRange(Subs& s) const;
   /** Apply the reverse of this substitution to all nodes in the range of s */
-  void rapplyToRange(Subs& s, bool doRewrite = false) const;
+  void rapplyToRange(Subs& s) const;
   /** Get equality (= v s) where v -> s is the i^th position in the vectors */
   Node getEquality(size_t i) const;
   /** Convert substitution to map */
@@ -87,6 +87,6 @@ class Subs
  */
 std::ostream& operator<<(std::ostream& out, const Subs& s);
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__EXPR__SUBS_H */

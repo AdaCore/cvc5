@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Morgan Deters
+ *   Andrew Reynolds, Clark Barrett, Mathias Preiner
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -25,7 +25,7 @@
 #include "theory/arrays/skolem_cache.h"
 #include "util/cardinality.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arrays {
 
@@ -639,7 +639,10 @@ RewriteResponse TheoryArraysRewriter::preRewrite(TNode node)
           Node newNode = nm->mkNode(kind::STORE, store[0], index, value);
           Trace("arrays-prerewrite")
               << "Arrays::preRewrite returning " << newNode << std::endl;
-          return RewriteResponse(REWRITE_DONE, newNode);
+          // We may have more than two nested stores to the same index or the
+          // rule above (store(a,i,select(a,i)) ---> a) may apply after this
+          // rewrite, so we return REWRITE_AGAIN here.
+          return RewriteResponse(REWRITE_AGAIN, newNode);
         }
       }
       break;
@@ -686,4 +689,4 @@ TrustNode TheoryArraysRewriter::expandDefinition(Node node)
 
 }  // namespace arrays
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

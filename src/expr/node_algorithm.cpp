@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,7 +20,7 @@
 #include "expr/attribute.h"
 #include "expr/dtype.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace expr {
 
 bool hasSubterm(TNode n, TNode t, bool strict)
@@ -274,7 +274,7 @@ bool hasBoundVar(TNode n)
     }
     n.setAttribute(HasBoundVarAttr(), hasBv);
     n.setAttribute(HasBoundVarComputedAttr(), true);
-    Debug("bva") << n << " has bva : " << n.getAttribute(HasBoundVarAttr())
+    Trace("bva") << n << " has bva : " << n.getAttribute(HasBoundVarAttr())
                  << std::endl;
     return hasBv;
   }
@@ -838,7 +838,7 @@ bool match(Node x, Node y, std::unordered_map<Node, Node>& subs)
       // equal
       // we compare operators instead of kinds because different terms may have
       // the same kind (both `(id x)` and `(square x)` have kind APPLY_UF)
-      // since many builtin operators like `PLUS` allow arbitrary number of
+      // since many builtin operators like `ADD` allow arbitrary number of
       // arguments, we also need to check if the two subterms have the same
       // number of children
       if (curr.first.getNumChildren() != curr.second.getNumChildren()
@@ -865,4 +865,4 @@ bool isBooleanConnective(TNode cur)
 }
 
 }  // namespace expr
-}  // namespace cvc5
+}  // namespace cvc5::internal

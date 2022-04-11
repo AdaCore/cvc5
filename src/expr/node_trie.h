@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner
+ *   Andrew Reynolds, Aina Niemetz
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,8 +21,7 @@
 #include <map>
 #include "expr/node.h"
 
-namespace cvc5 {
-namespace theory {
+namespace cvc5::internal {
 
 /** NodeTemplate trie class
  *
@@ -107,7 +106,6 @@ typedef NodeTemplateTrie<true> NodeTrie;
 /** Non-reference-counted version of the above data structure */
 typedef NodeTemplateTrie<false> TNodeTrie;
 
-}  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__EXPR__NODE_TRIE_H */

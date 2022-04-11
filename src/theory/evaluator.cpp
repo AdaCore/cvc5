@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andres Noetzli, Andrew Reynolds
+ *   Andres Noetzli, Andrew Reynolds, Mathias Preiner
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,9 +21,9 @@
 #include "theory/theory.h"
 #include "util/integer.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 EvalResult::EvalResult(const EvalResult& other)
@@ -416,7 +416,7 @@ EvalResult Evaluator::evalInternal(
           results[currNode] = EvalResult(av);
           break;
         }
-        case kind::PLUS:
+        case kind::ADD:
         {
           Rational res = results[currNode[0]].d_rat;
           for (size_t i = 1, end = currNode.getNumChildren(); i < end; i++)
@@ -427,7 +427,7 @@ EvalResult Evaluator::evalInternal(
           break;
         }
 
-        case kind::MINUS:
+        case kind::SUB:
         {
           const Rational& x = results[currNode[0]].d_rat;
           const Rational& y = results[currNode[1]].d_rat;
@@ -435,7 +435,7 @@ EvalResult Evaluator::evalInternal(
           break;
         }
 
-        case kind::UMINUS:
+        case kind::NEG:
         {
           const Rational& x = results[currNode[0]].d_rat;
           results[currNode] = EvalResult(-x);
@@ -869,7 +869,7 @@ EvalResult Evaluator::evalInternal(
 
             default:
             {
-              Trace("evaluator") << "Theory " << Theory::theoryOf(currNode[0])
+              Trace("evaluator") << "Evaluation of " << currNode[0].getKind()
                                  << " not supported" << std::endl;
               results[currNode] = EvalResult();
               evalAsNode[currNode] =
@@ -984,4 +984,4 @@ void Evaluator::processUnhandled(TNode n,
 }
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

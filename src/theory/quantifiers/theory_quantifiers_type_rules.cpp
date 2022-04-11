@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andrew Reynolds, Morgan Deters, Tim King
+ *   Aina Niemetz, Andrew Reynolds, Morgan Deters
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,7 +15,7 @@
 
 #include "theory/quantifiers/theory_quantifiers_type_rules.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -23,7 +23,7 @@ TypeNode QuantifierTypeRule::computeType(NodeManager* nodeManager,
                                          TNode n,
                                          bool check)
 {
-  Debug("typecheck-q") << "type check for fa " << n << std::endl;
+  Trace("typecheck-q") << "type check for fa " << n << std::endl;
   Assert((n.getKind() == kind::FORALL || n.getKind() == kind::EXISTS)
          && n.getNumChildren() > 0);
   if (check)
@@ -146,4 +146,4 @@ TypeNode QuantifierInstPatternListTypeRule::computeType(
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

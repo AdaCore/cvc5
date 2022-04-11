@@ -26,7 +26,7 @@ cvc5 is intended to be an open and extensible SMT engine.  It can be used as a
 stand-alone tool or as a library.  It has been designed to increase the
 performance and reduce the memory overhead of its predecessors.  It is written
 entirely in C++ and is released under an open-source software license (see file
-[COPYING](https://github.com/cvc5/cvc5/blob/master/COPYING)).
+[COPYING](https://github.com/cvc5/cvc5/blob/main/COPYING)).
 
 
 Website
@@ -49,7 +49,7 @@ The latest version of cvc5 is available on GitHub:
 https://github.com/cvc5/cvc5
 
 Source tar balls and binaries for releases of the
-[master branch](https://github.com/cvc5/cvc5) can be
+[main branch](https://github.com/cvc5/cvc5) can be
 found [here](https://github.com/cvc5/cvc5/releases).
 Nightly builds are available [here](https://cvc5.github.io/downloads).
 
@@ -61,7 +61,7 @@ cvc5 can be built on Linux and macOS.  For Windows, cvc5 can be cross-compiled
 using Mingw-w64.
 
 For detailed build and installation instructions on these platforms,
-see file [INSTALL.rst](https://github.com/cvc5/cvc5/blob/master/INSTALL.rst).
+see file [INSTALL.rst](https://github.com/cvc5/cvc5/blob/main/INSTALL.rst).
 
 
 Bug Reports
@@ -82,4 +82,4 @@ Authors
 -------------------------------------------------------------------------------
 
 For a full list of authors, please refer to the
-[AUTHORS](https://github.com/cvc5/cvc5/blob/master/AUTHORS) file.
+[AUTHORS](https://github.com/cvc5/cvc5/blob/main/AUTHORS) file.

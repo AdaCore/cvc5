@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,17 +19,18 @@
 #include "theory/quantifiers/term_util.h"
 #include "theory/uf/equality_engine_iterator.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 namespace inst {
 
-InstMatchGeneratorMulti::InstMatchGeneratorMulti(Trigger* tparent,
+InstMatchGeneratorMulti::InstMatchGeneratorMulti(Env& env,
+                                                 Trigger* tparent,
                                                  Node q,
                                                  std::vector<Node>& pats)
-    : IMGenerator(tparent), d_quant(q)
+    : IMGenerator(env, tparent), d_quant(q)
 {
   Trace("multi-trigger-cache")
       << "Making smart multi-trigger for " << q << std::endl;
@@ -57,7 +58,7 @@ InstMatchGeneratorMulti::InstMatchGeneratorMulti(Trigger* tparent,
     Node n = pats[i];
     // make the match generator
     InstMatchGenerator* img =
-        InstMatchGenerator::mkInstMatchGenerator(tparent, q, n);
+        InstMatchGenerator::mkInstMatchGenerator(env, tparent, q, n);
     img->setActiveAdd(false);
     d_children.push_back(img);
     // compute unique/shared variables
@@ -100,7 +101,7 @@ InstMatchGeneratorMulti::InstMatchGeneratorMulti(Trigger* tparent,
       index = index == 0 ? patsSize - 1 : (index - 1);
     }
     vars.insert(vars.end(), unique_vars.begin(), unique_vars.end());
-    if (Trace.isOn("multi-trigger-cache"))
+    if (TraceIsOn("multi-trigger-cache"))
     {
       Trace("multi-trigger-cache") << "   Index[" << i << "]: ";
       for (uint64_t v : vars)
@@ -316,4 +317,4 @@ void InstMatchGeneratorMulti::processNewInstantiations(InstMatch& m,
 }  // namespace inst
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

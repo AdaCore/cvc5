@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andrew Reynolds
+ *   Andrew Reynolds, Mathias Preiner
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,9 +21,9 @@
 #include "theory/theory_model.h"
 #include "util/rational.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 DifficultyManager::DifficultyManager(RelevanceManager* rlv,
@@ -51,9 +51,19 @@ void DifficultyManager::getDifficultyMap(std::map<Node, Node>& dmap)
   }
 }
 
-void DifficultyManager::notifyLemma(Node n)
+void DifficultyManager::notifyLemma(Node n, bool inFullEffortCheck)
 {
-  if (options::difficultyMode() != options::DifficultyMode::LEMMA_LITERAL)
+  // compute if we should consider the lemma
+  bool considerLemma = false;
+  if (options::difficultyMode() == options::DifficultyMode::LEMMA_LITERAL_ALL)
+  {
+    considerLemma = true;
+  }
+  else if (options::difficultyMode() == options::DifficultyMode::LEMMA_LITERAL)
+  {
+    considerLemma = inFullEffortCheck;
+  }
+  if (!considerLemma)
   {
     return;
   }
@@ -122,4 +132,4 @@ void DifficultyManager::incrementDifficulty(TNode a, uint64_t amount)
 }
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

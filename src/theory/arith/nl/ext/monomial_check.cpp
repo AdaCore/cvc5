@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -24,7 +24,7 @@
 #include "theory/arith/nl/nl_model.h"
 #include "util/rational.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 namespace nl {
@@ -77,7 +77,7 @@ void MonomialCheck::checkSign()
     if (d_ms_proc.find(a) == d_ms_proc.end())
     {
       std::vector<Node> exp;
-      if (Trace.isOn("nl-ext-debug"))
+      if (TraceIsOn("nl-ext-debug"))
       {
         Node cmva = d_data->d_model.computeConcreteModelValue(a);
         Trace("nl-ext-debug")
@@ -109,11 +109,14 @@ void MonomialCheck::checkMagnitude(unsigned c)
   // ensure information is setup
   if (c == 0)
   {
+    Trace("nl-ext-proc") << "Assign order ids for " << d_data->d_ms_vars
+                         << "..." << std::endl;
     // sort by absolute values of abstract model values
     assignOrderIds(d_data->d_ms_vars, d_order_vars, false, true);
 
     // sort individual variable lists
-    Trace("nl-ext-proc") << "Assign order var lists..." << std::endl;
+    Trace("nl-ext-proc") << "Assign order var lists for " << d_data->d_ms
+                         << "..." << std::endl;
     d_data->d_mdb.sortVariablesByModel(d_data->d_ms, d_data->d_model);
   }
 
@@ -454,7 +457,8 @@ bool MonomialCheck::compareMonomial(
                              lem,
                              cmp_infers);
     }
-    Assert(d_order_vars.find(av) != d_order_vars.end());
+    Assert(d_order_vars.find(av) != d_order_vars.end())
+        << "Missing order information for variable " << av;
     avo = d_order_vars[av];
   }
   Node bv;
@@ -664,7 +668,7 @@ void MonomialCheck::assignOrderIds(std::vector<Node>& vars,
       Trace("nl-ext-mvo") << "..do not assign order to " << x << " : " << v
                           << std::endl;
       // don't assign for non-constant values (transcendental function apps)
-      break;
+      continue;
     }
     Trace("nl-ext-mvo") << "  order " << x << " : " << v << std::endl;
     if (v != prev)
@@ -717,7 +721,7 @@ Node MonomialCheck::mkLit(Node a, Node b, int status, bool isAbsolute) const
     {
       return a_eq_b;
     }
-    Node negate_b = NodeManager::currentNM()->mkNode(Kind::UMINUS, b);
+    Node negate_b = NodeManager::currentNM()->mkNode(Kind::NEG, b);
     return a_eq_b.orNode(a.eqNode(negate_b));
   }
   else if (status < 0)
@@ -734,8 +738,8 @@ Node MonomialCheck::mkLit(Node a, Node b, int status, bool isAbsolute) const
   // return nm->mkNode( greater_op, mkAbs( a ), mkAbs( b ) );
   Node a_is_nonnegative = nm->mkNode(Kind::GEQ, a, d_data->d_zero);
   Node b_is_nonnegative = nm->mkNode(Kind::GEQ, b, d_data->d_zero);
-  Node negate_a = nm->mkNode(Kind::UMINUS, a);
-  Node negate_b = nm->mkNode(Kind::UMINUS, b);
+  Node negate_a = nm->mkNode(Kind::NEG, a);
+  Node negate_b = nm->mkNode(Kind::NEG, b);
   return a_is_nonnegative.iteNode(
       b_is_nonnegative.iteNode(nm->mkNode(greater_op, a, b),
                                nm->mkNode(greater_op, a, negate_b)),
@@ -760,4 +764,4 @@ void MonomialCheck::setMonomialFactor(Node a,
 }  // namespace nl
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

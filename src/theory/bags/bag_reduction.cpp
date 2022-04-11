@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Mudathir Mohamed
+ *   Mudathir Mohamed, Andrew Reynolds, Aina Niemetz
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -21,10 +21,10 @@
 #include "theory/quantifiers/fmf/bounded_integers.h"
 #include "util/rational.h"
 
-using namespace cvc5;
-using namespace cvc5::kind;
+using namespace cvc5::internal;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace bags {
 
@@ -87,7 +87,7 @@ Node BagReduction::reduceFoldOperator(Node node, std::vector<Node>& asserts)
     Node i =
         bvm->mkBoundVar<FirstIndexVarAttribute>(node, "i", nm->integerType());
     Node iList = nm->mkNode(BOUND_VAR_LIST, i);
-    Node iMinusOne = nm->mkNode(MINUS, i, one);
+    Node iMinusOne = nm->mkNode(SUB, i, one);
     Node uf_i = nm->mkNode(APPLY_UF, uf, i);
     Node combine_0 = nm->mkNode(APPLY_UF, combine, zero);
     Node combine_iMinusOne = nm->mkNode(APPLY_UF, combine, iMinusOne);
@@ -158,7 +158,7 @@ Node BagReduction::reduceCardOperator(Node node, std::vector<Node>& asserts)
       bvm->mkBoundVar<SecondIndexVarAttribute>(node, "j", nm->integerType());
   Node iList = nm->mkNode(BOUND_VAR_LIST, i);
   Node jList = nm->mkNode(BOUND_VAR_LIST, j);
-  Node iMinusOne = nm->mkNode(MINUS, i, one);
+  Node iMinusOne = nm->mkNode(SUB, i, one);
   Node uf_i = nm->mkNode(APPLY_UF, uf, i);
   Node uf_j = nm->mkNode(APPLY_UF, uf, j);
   Node cardinality_0 = nm->mkNode(APPLY_UF, cardinality, zero);
@@ -172,7 +172,7 @@ Node BagReduction::reduceCardOperator(Node node, std::vector<Node>& asserts)
   Node cardinality_0_equal = cardinality_0.eqNode(zero);
   Node uf_i_multiplicity = nm->mkNode(BAG_COUNT, uf_i, A);
   Node cardinality_i_equal = cardinality_i.eqNode(
-      nm->mkNode(PLUS, uf_i_multiplicity, cardinality_iMinusOne));
+      nm->mkNode(ADD, uf_i_multiplicity, cardinality_iMinusOne));
   Node unionDisjoint_0_equal =
       unionDisjoint_0.eqNode(nm->mkConst(EmptyBag(bagType)));
   Node bag = nm->mkBag(elementType, uf_i, uf_i_multiplicity);
@@ -208,4 +208,4 @@ Node BagReduction::reduceCardOperator(Node node, std::vector<Node>& asserts)
 
 }  // namespace bags
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -17,7 +17,7 @@
 
 #include <iostream>
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace bags {
 
@@ -38,6 +38,9 @@ const char* toString(Rewrite r)
     case Rewrite::EQ_CONST_FALSE: return "EQ_CONST_FALSE";
     case Rewrite::EQ_REFL: return "EQ_REFL";
     case Rewrite::EQ_SYM: return "EQ_SYM";
+    case Rewrite::FILTER_CONST: return "FILTER_CONST";
+    case Rewrite::FILTER_BAG_MAKE: return "FILTER_BAG_MAKE";
+    case Rewrite::FILTER_UNION_DISJOINT: return "FILTER_UNION_DISJOINT";
     case Rewrite::FROM_SINGLETON: return "FROM_SINGLETON";
     case Rewrite::FOLD_BAG: return "FOLD_BAG";
     case Rewrite::FOLD_CONST: return "FOLD_CONST";
@@ -53,6 +56,7 @@ const char* toString(Rewrite r)
     case Rewrite::MAP_BAG_MAKE: return "MAP_BAG_MAKE";
     case Rewrite::MAP_UNION_DISJOINT: return "MAP_UNION_DISJOINT";
     case Rewrite::MEMBER: return "MEMBER";
+    case Rewrite::PRODUCT_EMPTY: return "PRODUCT_EMPTY";
     case Rewrite::REMOVE_FROM_UNION: return "REMOVE_FROM_UNION";
     case Rewrite::REMOVE_MIN: return "REMOVE_MIN";
     case Rewrite::REMOVE_RETURN_LEFT: return "REMOVE_RETURN_LEFT";
@@ -88,4 +92,4 @@ std::ostream& operator<<(std::ostream& out, Rewrite r)
 
 }  // namespace bags
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

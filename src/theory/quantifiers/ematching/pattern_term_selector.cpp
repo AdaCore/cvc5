@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -22,9 +22,9 @@
 #include "theory/rewriter.h"
 #include "util/rational.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 namespace inst {
@@ -415,7 +415,7 @@ void PatternTermSelector::collectInternal(
     std::vector<Node> temp;
     temp.insert(temp.begin(), patTerms2.begin(), patTerms2.end());
     filterInstances(temp);
-    if (Trace.isOn("trigger-filter-instance"))
+    if (TraceIsOn("trigger-filter-instance"))
     {
       if (temp.size() != patTerms2.size())
       {
@@ -613,7 +613,7 @@ Node PatternTermSelector::getInversionVariable(Node n)
   {
     return n;
   }
-  else if (nk == PLUS || nk == MULT)
+  else if (nk == ADD || nk == MULT)
   {
     Node ret;
     for (const Node& nc : n)
@@ -659,7 +659,7 @@ Node PatternTermSelector::getInversion(Node n, Node x)
   {
     return x;
   }
-  else if (nk == PLUS || nk == MULT)
+  else if (nk == ADD || nk == MULT)
   {
     NodeManager* nm = NodeManager::currentNM();
     int cindex = -1;
@@ -669,9 +669,9 @@ Node PatternTermSelector::getInversion(Node n, Node x)
       Node nc = n[i];
       if (!quantifiers::TermUtil::hasInstConstAttr(nc))
       {
-        if (nk == PLUS)
+        if (nk == ADD)
         {
-          x = nm->mkNode(MINUS, x, nc);
+          x = nm->mkNode(SUB, x, nc);
         }
         else if (nk == MULT)
         {
@@ -685,7 +685,7 @@ Node PatternTermSelector::getInversion(Node n, Node x)
             }
             if (nc.getConst<Rational>().sgn() < 0)
             {
-              x = nm->mkNode(UMINUS, x);
+              x = nm->mkNode(NEG, x);
             }
           }
           else
@@ -694,7 +694,6 @@ Node PatternTermSelector::getInversion(Node n, Node x)
             x = nm->mkNode(MULT, x, coeff);
           }
         }
-        x = Rewriter::rewrite(x);
       }
       else
       {
@@ -730,4 +729,4 @@ void PatternTermSelector::getTriggerVariables(Node n,
 }  // namespace inst
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

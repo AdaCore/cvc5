@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Morgan Deters, Dejan Jovanovic, Clark Barrett
+ *   Morgan Deters, Mathias Preiner, Dejan Jovanovic
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -29,7 +29,7 @@
 #include "context/cdhashmap.h"
 #include "util/hash.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 class Rewriter;
@@ -50,6 +50,12 @@ class SubstitutionMap
   typedef NodeMap::iterator iterator;
   typedef NodeMap::const_iterator const_iterator;
 
+  struct ShouldTraverseCallback
+  {
+    virtual bool operator()(TNode n) const = 0;
+    virtual ~ShouldTraverseCallback() {}
+  };
+
  private:
   typedef std::unordered_map<Node, Node> NodeCache;
   /** A dummy context used by this class if none is provided */
@@ -65,7 +71,10 @@ class SubstitutionMap
   bool d_cacheInvalidated;
 
   /** Internal method that performs substitution */
-  Node internalSubstitute(TNode t, NodeCache& cache, std::set<TNode>* tracker);
+  Node internalSubstitute(TNode t,
+                          NodeCache& cache,
+                          std::set<TNode>* tracker,
+                          const ShouldTraverseCallback* stc);
 
   /** Helper class to invalidate cache on user pop */
   class CacheInvalidator : public context::ContextNotifyObj
@@ -134,7 +143,10 @@ class SubstitutionMap
    * Apply the substitutions to the node, optionally rewrite if a non-null
    * Rewriter pointer is passed.
    */
-  Node apply(TNode t, Rewriter* r = nullptr, std::set<TNode>* tracker = nullptr);
+  Node apply(TNode t,
+             Rewriter* r = nullptr,
+             std::set<TNode>* tracker = nullptr,
+             const ShouldTraverseCallback* stc = nullptr);
 
   /**
    * Apply the substitutions to the node.
@@ -174,6 +186,6 @@ inline std::ostream& operator << (std::ostream& out, const SubstitutionMap& subs
 
 std::ostream& operator<<(std::ostream& out, const theory::SubstitutionMap::iterator& i);
 
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__SUBSTITUTIONS_H */

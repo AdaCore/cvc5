@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer
+ *   Andrew Reynolds, Aina Niemetz, Mathias Preiner
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -29,7 +29,7 @@
 #include "theory/strings/sequences_stats.h"
 #include "theory/uf/proof_equality_engine.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace strings {
 
@@ -137,7 +137,7 @@ class InferProofCons : public ProofGenerator
    * true. In this case, the argument psb is updated to contain (possibly
    * multiple) proof steps for how to construct a proof for the given inference.
    * In particular, psb will contain a set of steps that form a proof
-   * whose conclusion is ii.d_conc and whose free assumptions are ii.d_ant.
+   * whose conclusion is conc and whose free assumptions are exp.
    */
   static void convert(InferenceId infer,
                       bool isRev,
@@ -279,6 +279,6 @@ class InferProofCons : public ProofGenerator
 
 }  // namespace strings
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__STRINGS__INFER_PROOF_CONS_H */

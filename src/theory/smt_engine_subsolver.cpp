@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andrew Reynolds, Andres Noetzli, Gereon Kremer
+ *   Andrew Reynolds, Aina Niemetz, Andres Noetzli
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -20,15 +20,13 @@
 #include "smt/env.h"
 #include "smt/solver_engine.h"
 #include "smt/solver_engine_scope.h"
-#include "theory/rewriter.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 
 // optimization: try to rewrite to constant
 Result quickCheck(Node& query)
 {
-  query = theory::Rewriter::rewrite(query);
   if (query.isConst())
   {
     if (!query.getConst<bool>())
@@ -40,7 +38,7 @@ Result quickCheck(Node& query)
       return Result(Result::SAT);
     }
   }
-  return Result(Result::SAT_UNKNOWN, Result::REQUIRES_FULL_CHECK);
+  return Result(Result::UNKNOWN, UnknownExplanation::REQUIRES_FULL_CHECK);
 }
 
 void initializeSubsolver(std::unique_ptr<SolverEngine>& smte,
@@ -113,7 +111,7 @@ Result checkWithSubsolver(Node query,
   Result r = quickCheck(query);
   if (!r.isUnknown())
   {
-    if (r.asSatisfiabilityResult().isSat() == Result::SAT)
+    if (r.getStatus() == Result::SAT)
     {
       // default model
       NodeManager* nm = NodeManager::currentNM();
@@ -128,7 +126,7 @@ Result checkWithSubsolver(Node query,
   initializeSubsolver(smte, opts, logicInfo, needsTimeout, timeout);
   smte->assertFormula(query);
   r = smte->checkSat();
-  if (r.asSatisfiabilityResult().isSat() == Result::SAT)
+  if (r.getStatus() == Result::SAT)
   {
     for (const Node& v : vars)
     {
@@ -176,4 +174,4 @@ void getUnsatCoreFromSubsolver(SolverEngine& smt, std::vector<Node>& uasserts)
 }
 
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

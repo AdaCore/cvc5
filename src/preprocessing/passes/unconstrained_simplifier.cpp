@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -31,10 +31,10 @@
 #include "util/rational.h"
 
 using namespace std;
-using namespace cvc5::kind;
-using namespace cvc5::theory;
+using namespace cvc5::internal::kind;
+using namespace cvc5::internal::theory;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
 
@@ -310,7 +310,7 @@ void UnconstrainedSimplifier::processUnconstrained()
         case kind::NOT:
         case kind::BITVECTOR_NOT:
         case kind::BITVECTOR_NEG:
-        case kind::UMINUS:
+        case kind::NEG:
           ++d_numUnconstrainedElim;
           Assert(parent[0] == current);
           if (currentSub.isNull())
@@ -447,8 +447,8 @@ void UnconstrainedSimplifier::processUnconstrained()
 
         // N-ary operators returning same type requiring at least one child to
         // be unconstrained
-        case kind::PLUS:
-        case kind::MINUS:
+        case kind::ADD:
+        case kind::SUB:
           if (current.getType().isInteger() && !parent.getType().isInteger())
           {
             break;
@@ -879,4 +879,4 @@ PreprocessingPassResult UnconstrainedSimplifier::applyInternal(
 
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace cvc5
+}  // namespace cvc5::internal

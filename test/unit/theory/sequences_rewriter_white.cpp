@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Aina Niemetz, Andres Noetzli, Andrew Reynolds
+ *   Andres Noetzli, Aina Niemetz, Andrew Reynolds
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -19,6 +19,7 @@
 
 #include "expr/node.h"
 #include "expr/node_manager.h"
+#include "expr/sequence.h"
 #include "test_smt.h"
 #include "theory/rewriter.h"
 #include "theory/strings/arith_entail.h"
@@ -28,11 +29,11 @@
 #include "util/rational.h"
 #include "util/string.h"
 
-using namespace cvc5::kind;
-using namespace cvc5::theory;
-using namespace cvc5::theory::strings;
+using namespace cvc5::internal::kind;
+using namespace cvc5::internal::theory;
+using namespace cvc5::internal::theory::strings;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace test {
 
 class TestTheoryWhiteSequencesRewriter : public TestSmt
@@ -87,10 +88,10 @@ TEST_F(TestTheoryWhiteSequencesRewriter, check_entail_length_one)
   TypeNode intType = d_nodeManager->integerType();
   TypeNode strType = d_nodeManager->stringType();
 
-  Node a = d_nodeManager->mkConst(::cvc5::String("A"));
-  Node abcd = d_nodeManager->mkConst(::cvc5::String("ABCD"));
-  Node aaad = d_nodeManager->mkConst(::cvc5::String("AAAD"));
-  Node b = d_nodeManager->mkConst(::cvc5::String("B"));
+  Node a = d_nodeManager->mkConst(String("A"));
+  Node abcd = d_nodeManager->mkConst(String("ABCD"));
+  Node aaad = d_nodeManager->mkConst(String("AAAD"));
+  Node b = d_nodeManager->mkConst(String("B"));
   Node x = d_nodeManager->mkVar("x", strType);
   Node y = d_nodeManager->mkVar("y", strType);
   Node negOne = d_nodeManager->mkConst(CONST_RATIONAL, Rational(-1));
@@ -153,11 +154,11 @@ TEST_F(TestTheoryWhiteSequencesRewriter, check_entail_with_with_assumption)
   Node zero = d_nodeManager->mkConst(CONST_RATIONAL, Rational(0));
   Node one = d_nodeManager->mkConst(CONST_RATIONAL, Rational(1));
 
-  Node empty = d_nodeManager->mkConst(::cvc5::String(""));
-  Node a = d_nodeManager->mkConst(::cvc5::String("A"));
+  Node empty = d_nodeManager->mkConst(String(""));
+  Node a = d_nodeManager->mkConst(String("A"));
 
   Node slen_y = d_nodeManager->mkNode(kind::STRING_LENGTH, y);
-  Node x_plus_slen_y = d_nodeManager->mkNode(kind::PLUS, x, slen_y);
+  Node x_plus_slen_y = d_nodeManager->mkNode(kind::ADD, x, slen_y);
   Node x_plus_slen_y_eq_zero = d_rewriter->rewrite(
       d_nodeManager->mkNode(kind::EQUAL, x_plus_slen_y, zero));
 
@@ -168,7 +169,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, check_entail_with_with_assumption)
   ASSERT_FALSE(ae.checkWithAssumption(x_plus_slen_y_eq_zero, zero, x, true));
 
   Node x_plus_slen_y_plus_z_eq_zero = d_rewriter->rewrite(d_nodeManager->mkNode(
-      kind::EQUAL, d_nodeManager->mkNode(kind::PLUS, x_plus_slen_y, z), zero));
+      kind::EQUAL, d_nodeManager->mkNode(kind::ADD, x_plus_slen_y, z), zero));
 
   // x + (str.len y) + z = 0 |= 0 > x --> false
   ASSERT_FALSE(
@@ -177,7 +178,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, check_entail_with_with_assumption)
   Node x_plus_slen_y_plus_slen_y_eq_zero =
       d_rewriter->rewrite(d_nodeManager->mkNode(
           kind::EQUAL,
-          d_nodeManager->mkNode(kind::PLUS, x_plus_slen_y, slen_y),
+          d_nodeManager->mkNode(kind::ADD, x_plus_slen_y, slen_y),
           zero));
 
   // x + (str.len y) + (str.len y) = 0 |= 0 >= x --> true
@@ -186,7 +187,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, check_entail_with_with_assumption)
 
   Node five = d_nodeManager->mkConst(CONST_RATIONAL, Rational(5));
   Node six = d_nodeManager->mkConst(CONST_RATIONAL, Rational(6));
-  Node x_plus_five = d_nodeManager->mkNode(kind::PLUS, x, five);
+  Node x_plus_five = d_nodeManager->mkNode(kind::ADD, x, five);
   Node x_plus_five_lt_six =
       d_rewriter->rewrite(d_nodeManager->mkNode(kind::LT, x_plus_five, six));
 
@@ -196,7 +197,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, check_entail_with_with_assumption)
   // x + 5 < 6 |= 0 > x --> false
   ASSERT_TRUE(!ae.checkWithAssumption(x_plus_five_lt_six, zero, x, true));
 
-  Node neg_x = d_nodeManager->mkNode(kind::UMINUS, x);
+  Node neg_x = d_nodeManager->mkNode(kind::NEG, x);
   Node x_plus_five_lt_five =
       d_rewriter->rewrite(d_nodeManager->mkNode(kind::LT, x_plus_five, five));
 
@@ -228,12 +229,17 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_nth)
 
   Node zero = d_nodeManager->mkConstInt(0);
   Node one = d_nodeManager->mkConstInt(1);
+  // Position that is greater than the maximum value that can be represented
+  // with a uint32_t
+  Node largePos = d_nodeManager->mkConstInt(
+      static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1);
 
-  Node sx = d_nodeManager->mkNode(SEQ_UNIT, x);
-  Node sy = d_nodeManager->mkNode(SEQ_UNIT, y);
-  Node sz = d_nodeManager->mkNode(SEQ_UNIT, z);
-  Node sw = d_nodeManager->mkNode(SEQ_UNIT, w);
-  Node sv = d_nodeManager->mkNode(SEQ_UNIT, v);
+  Node s01 = d_nodeManager->mkConst(Sequence(intType, {zero, one}));
+  Node sx = d_nodeManager->mkSeqUnit(intType, x);
+  Node sy = d_nodeManager->mkSeqUnit(intType, y);
+  Node sz = d_nodeManager->mkSeqUnit(intType, z);
+  Node sw = d_nodeManager->mkSeqUnit(intType, w);
+  Node sv = d_nodeManager->mkSeqUnit(intType, v);
   Node xyz = d_nodeManager->mkNode(STRING_CONCAT, sx, sy, sz);
   Node wv = d_nodeManager->mkNode(STRING_CONCAT, sw, sv);
 
@@ -266,6 +272,14 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_nth)
     Node n = d_nodeManager->mkNode(SEQ_NTH, xyz, one);
     sameNormalForm(n, y);
   }
+
+  {
+    // Check that there are no errors when trying to rewrite
+    // (seq.nth (seq.++ (seq.unit 0) (seq.unit 1)) n) where n cannot be
+    // represented as a 32-bit integer
+    Node n = d_nodeManager->mkNode(SEQ_NTH, s01, largePos);
+    sameNormalForm(n, n);
+  }
 }
 
 TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_substr)
@@ -274,10 +288,10 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_substr)
   TypeNode intType = d_nodeManager->integerType();
   TypeNode strType = d_nodeManager->stringType();
 
-  Node empty = d_nodeManager->mkConst(::cvc5::String(""));
-  Node a = d_nodeManager->mkConst(::cvc5::String("A"));
-  Node b = d_nodeManager->mkConst(::cvc5::String("B"));
-  Node abcd = d_nodeManager->mkConst(::cvc5::String("ABCD"));
+  Node empty = d_nodeManager->mkConst(String(""));
+  Node a = d_nodeManager->mkConst(String("A"));
+  Node b = d_nodeManager->mkConst(String("B"));
+  Node abcd = d_nodeManager->mkConst(String("ABCD"));
   Node negone = d_nodeManager->mkConst(CONST_RATIONAL, Rational(-1));
   Node zero = d_nodeManager->mkConst(CONST_RATIONAL, Rational(0));
   Node one = d_nodeManager->mkConst(CONST_RATIONAL, Rational(1));
@@ -299,7 +313,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_substr)
       kind::STRING_SUBSTR,
       a,
       d_nodeManager->mkNode(
-          kind::PLUS, x, d_nodeManager->mkConst(CONST_RATIONAL, Rational(1))),
+          kind::ADD, x, d_nodeManager->mkConst(CONST_RATIONAL, Rational(1))),
       x);
   sameNormalForm(n, empty);
 
@@ -308,7 +322,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_substr)
       kind::STRING_SUBSTR,
       a,
       d_nodeManager->mkNode(
-          kind::PLUS, x, d_nodeManager->mkNode(kind::STRING_LENGTH, s)),
+          kind::ADD, x, d_nodeManager->mkNode(kind::STRING_LENGTH, s)),
       x);
   sameNormalForm(n, empty);
 
@@ -318,15 +332,13 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_substr)
   ASSERT_EQ(res, n);
 
   // (str.substr "ABCD" (+ x 3) x) -> ""
-  n = d_nodeManager->mkNode(kind::STRING_SUBSTR,
-                            abcd,
-                            d_nodeManager->mkNode(kind::PLUS, x, three),
-                            x);
+  n = d_nodeManager->mkNode(
+      kind::STRING_SUBSTR, abcd, d_nodeManager->mkNode(kind::ADD, x, three), x);
   sameNormalForm(n, empty);
 
   // (str.substr "ABCD" (+ x 2) x) -> (str.substr "ABCD" (+ x 2) x)
   n = d_nodeManager->mkNode(
-      kind::STRING_SUBSTR, abcd, d_nodeManager->mkNode(kind::PLUS, x, two), x);
+      kind::STRING_SUBSTR, abcd, d_nodeManager->mkNode(kind::ADD, x, two), x);
   res = sr.rewriteSubstr(n);
   sameNormalForm(res, n);
 
@@ -423,11 +435,11 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_update)
   Node one = d_nodeManager->mkConstInt(1);
   Node three = d_nodeManager->mkConstInt(3);
 
-  Node sx = d_nodeManager->mkNode(SEQ_UNIT, x);
-  Node sy = d_nodeManager->mkNode(SEQ_UNIT, y);
-  Node sz = d_nodeManager->mkNode(SEQ_UNIT, z);
-  Node sw = d_nodeManager->mkNode(SEQ_UNIT, w);
-  Node sv = d_nodeManager->mkNode(SEQ_UNIT, v);
+  Node sx = d_nodeManager->mkSeqUnit(intType, x);
+  Node sy = d_nodeManager->mkSeqUnit(intType, y);
+  Node sz = d_nodeManager->mkSeqUnit(intType, z);
+  Node sw = d_nodeManager->mkSeqUnit(intType, w);
+  Node sv = d_nodeManager->mkSeqUnit(intType, v);
   Node xyz = d_nodeManager->mkNode(STRING_CONCAT, sx, sy, sz);
   Node wv = d_nodeManager->mkNode(STRING_CONCAT, sw, sv);
 
@@ -518,8 +530,8 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_concat)
   TypeNode intType = d_nodeManager->integerType();
   TypeNode strType = d_nodeManager->stringType();
 
-  Node empty = d_nodeManager->mkConst(::cvc5::String(""));
-  Node a = d_nodeManager->mkConst(::cvc5::String("A"));
+  Node empty = d_nodeManager->mkConst(String(""));
+  Node a = d_nodeManager->mkConst(String("A"));
   Node zero = d_nodeManager->mkConst(CONST_RATIONAL, Rational(0));
   Node three = d_nodeManager->mkConst(CONST_RATIONAL, Rational(3));
 
@@ -586,11 +598,11 @@ TEST_F(TestTheoryWhiteSequencesRewriter, length_preserve_rewrite)
   TypeNode intType = d_nodeManager->integerType();
   TypeNode strType = d_nodeManager->stringType();
 
-  Node empty = d_nodeManager->mkConst(::cvc5::String(""));
-  Node abcd = d_nodeManager->mkConst(::cvc5::String("ABCD"));
-  Node f = d_nodeManager->mkConst(::cvc5::String("F"));
-  Node gh = d_nodeManager->mkConst(::cvc5::String("GH"));
-  Node ij = d_nodeManager->mkConst(::cvc5::String("IJ"));
+  Node empty = d_nodeManager->mkConst(String(""));
+  Node abcd = d_nodeManager->mkConst(String("ABCD"));
+  Node f = d_nodeManager->mkConst(String("F"));
+  Node gh = d_nodeManager->mkConst(String("GH"));
+  Node ij = d_nodeManager->mkConst(String("IJ"));
 
   Node i = d_nodeManager->mkVar("i", intType);
   Node s = d_nodeManager->mkVar("s", strType);
@@ -619,12 +631,12 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_indexOf)
   TypeNode intType = d_nodeManager->integerType();
   TypeNode strType = d_nodeManager->stringType();
 
-  Node a = d_nodeManager->mkConst(::cvc5::String("A"));
-  Node abcd = d_nodeManager->mkConst(::cvc5::String("ABCD"));
-  Node aaad = d_nodeManager->mkConst(::cvc5::String("AAAD"));
-  Node b = d_nodeManager->mkConst(::cvc5::String("B"));
-  Node c = d_nodeManager->mkConst(::cvc5::String("C"));
-  Node ccc = d_nodeManager->mkConst(::cvc5::String("CCC"));
+  Node a = d_nodeManager->mkConst(String("A"));
+  Node abcd = d_nodeManager->mkConst(String("ABCD"));
+  Node aaad = d_nodeManager->mkConst(String("AAAD"));
+  Node b = d_nodeManager->mkConst(String("B"));
+  Node c = d_nodeManager->mkConst(String("C"));
+  Node ccc = d_nodeManager->mkConst(String("CCC"));
   Node x = d_nodeManager->mkVar("x", strType);
   Node y = d_nodeManager->mkVar("y", strType);
   Node negOne = d_nodeManager->mkConst(CONST_RATIONAL, Rational(-1));
@@ -683,7 +695,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_indexOf)
         a,
         zero);
     Node rhs = d_nodeManager->mkNode(
-        kind::PLUS,
+        kind::ADD,
         two,
         d_nodeManager->mkNode(
             kind::STRING_INDEXOF,
@@ -699,12 +711,12 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_replace)
   TypeNode intType = d_nodeManager->integerType();
   TypeNode strType = d_nodeManager->stringType();
 
-  Node empty = d_nodeManager->mkConst(::cvc5::String(""));
-  Node a = d_nodeManager->mkConst(::cvc5::String("A"));
-  Node ab = d_nodeManager->mkConst(::cvc5::String("AB"));
-  Node b = d_nodeManager->mkConst(::cvc5::String("B"));
-  Node c = d_nodeManager->mkConst(::cvc5::String("C"));
-  Node d = d_nodeManager->mkConst(::cvc5::String("D"));
+  Node empty = d_nodeManager->mkConst(String(""));
+  Node a = d_nodeManager->mkConst(String("A"));
+  Node ab = d_nodeManager->mkConst(String("AB"));
+  Node b = d_nodeManager->mkConst(String("B"));
+  Node c = d_nodeManager->mkConst(String("C"));
+  Node d = d_nodeManager->mkConst(String("D"));
   Node x = d_nodeManager->mkVar("x", strType);
   Node y = d_nodeManager->mkVar("y", strType);
   Node z = d_nodeManager->mkVar("z", strType);
@@ -895,7 +907,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_replace_re)
                                    d_nodeManager->mkConst(String("AZZZB")),
                                    re,
                                    foo);
-    Node res = d_nodeManager->mkConst(::cvc5::String("FOO"));
+    Node res = d_nodeManager->mkConst(String("FOO"));
     sameNormalForm(t, res);
   }
 
@@ -912,7 +924,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_replace_re)
                                    d_nodeManager->mkConst(String("ZAZZZBZZB")),
                                    re,
                                    foo);
-    Node res = d_nodeManager->mkConst(::cvc5::String("ZFOOZZB"));
+    Node res = d_nodeManager->mkConst(String("ZFOOZZB"));
     sameNormalForm(t, res);
   }
 
@@ -929,7 +941,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_replace_re)
                                    d_nodeManager->mkConst(String("ZAZZZBZAZB")),
                                    re,
                                    foo);
-    Node res = d_nodeManager->mkConst(::cvc5::String("ZFOOZAZB"));
+    Node res = d_nodeManager->mkConst(String("ZFOOZAZB"));
     sameNormalForm(t, res);
   }
 
@@ -946,7 +958,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_replace_re)
                                    d_nodeManager->mkConst(String("ZZZ")),
                                    re,
                                    foo);
-    Node res = d_nodeManager->mkConst(::cvc5::String("ZZZ"));
+    Node res = d_nodeManager->mkConst(String("ZZZ"));
     sameNormalForm(t, res);
   }
 
@@ -963,7 +975,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_replace_re)
                                    d_nodeManager->mkConst(String("ZZZ")),
                                    sigStar,
                                    foo);
-    Node res = d_nodeManager->mkConst(::cvc5::String("FOOZZZ"));
+    Node res = d_nodeManager->mkConst(String("FOOZZZ"));
     sameNormalForm(t, res);
   }
 
@@ -980,7 +992,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_replace_re)
                                    d_nodeManager->mkConst(String("")),
                                    sigStar,
                                    foo);
-    Node res = d_nodeManager->mkConst(::cvc5::String("FOO"));
+    Node res = d_nodeManager->mkConst(String("FOO"));
     sameNormalForm(t, res);
   }
 }
@@ -1015,7 +1027,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_replace_all)
                                    d_nodeManager->mkConst(String("AZZZB")),
                                    re,
                                    foo);
-    Node res = d_nodeManager->mkConst(::cvc5::String("FOO"));
+    Node res = d_nodeManager->mkConst(String("FOO"));
     sameNormalForm(t, res);
   }
 
@@ -1032,7 +1044,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_replace_all)
                                    d_nodeManager->mkConst(String("ZAZZZBZZB")),
                                    re,
                                    foo);
-    Node res = d_nodeManager->mkConst(::cvc5::String("ZFOOZZB"));
+    Node res = d_nodeManager->mkConst(String("ZFOOZZB"));
     sameNormalForm(t, res);
   }
 
@@ -1049,7 +1061,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_replace_all)
                                    d_nodeManager->mkConst(String("ZAZZZBZAZB")),
                                    re,
                                    foo);
-    Node res = d_nodeManager->mkConst(::cvc5::String("ZFOOZFOO"));
+    Node res = d_nodeManager->mkConst(String("ZFOOZFOO"));
     sameNormalForm(t, res);
   }
 
@@ -1066,7 +1078,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_replace_all)
                                    d_nodeManager->mkConst(String("ZZZ")),
                                    re,
                                    foo);
-    Node res = d_nodeManager->mkConst(::cvc5::String("ZZZ"));
+    Node res = d_nodeManager->mkConst(String("ZZZ"));
     sameNormalForm(t, res);
   }
 
@@ -1083,7 +1095,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_replace_all)
                                    d_nodeManager->mkConst(String("ZZZ")),
                                    sigStar,
                                    foo);
-    Node res = d_nodeManager->mkConst(::cvc5::String("FOOFOOFOO"));
+    Node res = d_nodeManager->mkConst(String("FOOFOOFOO"));
     sameNormalForm(t, res);
   }
 
@@ -1100,7 +1112,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_replace_all)
                                    d_nodeManager->mkConst(String("")),
                                    sigStar,
                                    foo);
-    Node res = d_nodeManager->mkConst(::cvc5::String(""));
+    Node res = d_nodeManager->mkConst(String(""));
     sameNormalForm(t, res);
   }
 }
@@ -1110,18 +1122,18 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_contains)
   TypeNode intType = d_nodeManager->integerType();
   TypeNode strType = d_nodeManager->stringType();
 
-  Node empty = d_nodeManager->mkConst(::cvc5::String(""));
-  Node a = d_nodeManager->mkConst(::cvc5::String("A"));
-  Node ab = d_nodeManager->mkConst(::cvc5::String("AB"));
-  Node b = d_nodeManager->mkConst(::cvc5::String("B"));
-  Node c = d_nodeManager->mkConst(::cvc5::String("C"));
-  Node e = d_nodeManager->mkConst(::cvc5::String("E"));
-  Node h = d_nodeManager->mkConst(::cvc5::String("H"));
-  Node j = d_nodeManager->mkConst(::cvc5::String("J"));
-  Node p = d_nodeManager->mkConst(::cvc5::String("P"));
-  Node abc = d_nodeManager->mkConst(::cvc5::String("ABC"));
-  Node def = d_nodeManager->mkConst(::cvc5::String("DEF"));
-  Node ghi = d_nodeManager->mkConst(::cvc5::String("GHI"));
+  Node empty = d_nodeManager->mkConst(String(""));
+  Node a = d_nodeManager->mkConst(String("A"));
+  Node ab = d_nodeManager->mkConst(String("AB"));
+  Node b = d_nodeManager->mkConst(String("B"));
+  Node c = d_nodeManager->mkConst(String("C"));
+  Node e = d_nodeManager->mkConst(String("E"));
+  Node h = d_nodeManager->mkConst(String("H"));
+  Node j = d_nodeManager->mkConst(String("J"));
+  Node p = d_nodeManager->mkConst(String("P"));
+  Node abc = d_nodeManager->mkConst(String("ABC"));
+  Node def = d_nodeManager->mkConst(String("DEF"));
+  Node ghi = d_nodeManager->mkConst(String("GHI"));
   Node x = d_nodeManager->mkVar("x", strType);
   Node y = d_nodeManager->mkVar("y", strType);
   Node xy = d_nodeManager->mkNode(kind::STRING_CONCAT, x, y);
@@ -1462,9 +1474,9 @@ TEST_F(TestTheoryWhiteSequencesRewriter, infer_eqs_from_contains)
   StringsEntail& se = d_seqRewriter->getStringsEntail();
   TypeNode strType = d_nodeManager->stringType();
 
-  Node empty = d_nodeManager->mkConst(::cvc5::String(""));
-  Node a = d_nodeManager->mkConst(::cvc5::String("A"));
-  Node b = d_nodeManager->mkConst(::cvc5::String("B"));
+  Node empty = d_nodeManager->mkConst(String(""));
+  Node a = d_nodeManager->mkConst(String("A"));
+  Node b = d_nodeManager->mkConst(String("B"));
   Node x = d_nodeManager->mkVar("x", strType);
   Node y = d_nodeManager->mkVar("y", strType);
   Node xy = d_nodeManager->mkNode(kind::STRING_CONCAT, x, y);
@@ -1506,8 +1518,8 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_prefix_suffix)
 {
   TypeNode strType = d_nodeManager->stringType();
 
-  Node empty = d_nodeManager->mkConst(::cvc5::String(""));
-  Node a = d_nodeManager->mkConst(::cvc5::String("A"));
+  Node empty = d_nodeManager->mkConst(String(""));
+  Node a = d_nodeManager->mkConst(String("A"));
   Node x = d_nodeManager->mkVar("x", strType);
   Node y = d_nodeManager->mkVar("y", strType);
   Node xx = d_nodeManager->mkNode(kind::STRING_CONCAT, x, x);
@@ -1543,11 +1555,11 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_equality_ext)
   TypeNode strType = d_nodeManager->stringType();
   TypeNode intType = d_nodeManager->integerType();
 
-  Node empty = d_nodeManager->mkConst(::cvc5::String(""));
-  Node a = d_nodeManager->mkConst(::cvc5::String("A"));
-  Node aaa = d_nodeManager->mkConst(::cvc5::String("AAA"));
-  Node b = d_nodeManager->mkConst(::cvc5::String("B"));
-  Node ba = d_nodeManager->mkConst(::cvc5::String("BA"));
+  Node empty = d_nodeManager->mkConst(String(""));
+  Node a = d_nodeManager->mkConst(String("A"));
+  Node aaa = d_nodeManager->mkConst(String("AAA"));
+  Node b = d_nodeManager->mkConst(String("B"));
+  Node ba = d_nodeManager->mkConst(String("BA"));
   Node w = d_nodeManager->mkVar("w", strType);
   Node x = d_nodeManager->mkVar("x", strType);
   Node y = d_nodeManager->mkVar("y", strType);
@@ -1833,14 +1845,14 @@ TEST_F(TestTheoryWhiteSequencesRewriter, strip_constant_endpoints)
   TypeNode intType = d_nodeManager->integerType();
   TypeNode strType = d_nodeManager->stringType();
 
-  Node empty = d_nodeManager->mkConst(::cvc5::String(""));
-  Node a = d_nodeManager->mkConst(::cvc5::String("A"));
-  Node ab = d_nodeManager->mkConst(::cvc5::String("AB"));
-  Node abc = d_nodeManager->mkConst(::cvc5::String("ABC"));
-  Node abcd = d_nodeManager->mkConst(::cvc5::String("ABCD"));
-  Node bc = d_nodeManager->mkConst(::cvc5::String("BC"));
-  Node c = d_nodeManager->mkConst(::cvc5::String("C"));
-  Node cd = d_nodeManager->mkConst(::cvc5::String("CD"));
+  Node empty = d_nodeManager->mkConst(String(""));
+  Node a = d_nodeManager->mkConst(String("A"));
+  Node ab = d_nodeManager->mkConst(String("AB"));
+  Node abc = d_nodeManager->mkConst(String("ABC"));
+  Node abcd = d_nodeManager->mkConst(String("ABCD"));
+  Node bc = d_nodeManager->mkConst(String("BC"));
+  Node c = d_nodeManager->mkConst(String("C"));
+  Node cd = d_nodeManager->mkConst(String("CD"));
   Node x = d_nodeManager->mkVar("x", strType);
   Node y = d_nodeManager->mkVar("y", strType);
   Node n = d_nodeManager->mkVar("n", intType);
@@ -1940,7 +1952,7 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_membership)
   TypeNode strType = d_nodeManager->stringType();
 
   std::vector<Node> vec_empty;
-  Node abc = d_nodeManager->mkConst(::cvc5::String("ABC"));
+  Node abc = d_nodeManager->mkConst(String("ABC"));
   Node re_abc = d_nodeManager->mkNode(kind::STRING_TO_REGEXP, abc);
   Node x = d_nodeManager->mkVar("x", strType);
 
@@ -2016,4 +2028,4 @@ TEST_F(TestTheoryWhiteSequencesRewriter, rewrite_regexp_concat)
   }
 }
 }  // namespace test
-}  // namespace cvc5
+}  // namespace cvc5::internal

@@ -1,19 +1,16 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Liana Hadarean, Aina Niemetz, Andrew Reynolds
+ *   Liana Hadarean, Aina Niemetz, Andres Noetzli
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
  * ****************************************************************************
  *
- * [[ Add one-line brief description here ]]
- *
- * [[ Add lengthier description here ]]
- * \todo document this file
+ * Theory BV rewriter.
  */
 
 #include "options/bv_options.h"
@@ -26,9 +23,9 @@
 #include "theory/bv/theory_bv_rewriter.h"
 #include "theory/theory.h"
 
-using namespace cvc5;
-using namespace cvc5::theory;
-using namespace cvc5::theory::bv;
+using namespace cvc5::internal;
+using namespace cvc5::internal::theory;
+using namespace cvc5::internal::theory::bv;
 
 TheoryBVRewriter::TheoryBVRewriter() { initializeRewrites(); }
 
@@ -36,8 +33,8 @@ RewriteResponse TheoryBVRewriter::preRewrite(TNode node) {
   RewriteResponse res = d_rewriteTable[node.getKind()](node, true);
   if (res.d_node != node)
   {
-    Debug("bitvector-rewrite") << "TheoryBV::preRewrite    " << node << std::endl;
-    Debug("bitvector-rewrite")
+    Trace("bitvector-rewrite") << "TheoryBV::preRewrite    " << node << std::endl;
+    Trace("bitvector-rewrite")
         << "TheoryBV::preRewrite to " << res.d_node << std::endl;
   }
   return res; 
@@ -47,8 +44,8 @@ RewriteResponse TheoryBVRewriter::postRewrite(TNode node) {
   RewriteResponse res = d_rewriteTable[node.getKind()](node, false);
   if (res.d_node != node)
   {
-    Debug("bitvector-rewrite") << "TheoryBV::postRewrite    " << node << std::endl;
-    Debug("bitvector-rewrite")
+    Trace("bitvector-rewrite") << "TheoryBV::postRewrite    " << node << std::endl;
+    Trace("bitvector-rewrite")
         << "TheoryBV::postRewrite to " << res.d_node << std::endl;
   }
   return res; 
@@ -56,7 +53,7 @@ RewriteResponse TheoryBVRewriter::postRewrite(TNode node) {
 
 TrustNode TheoryBVRewriter::expandDefinition(Node node)
 {
-  Debug("bitvector-expandDefinition")
+  Trace("bitvector-expandDefinition")
       << "TheoryBV::expandDefinition(" << node << ")" << std::endl;
   Node ret;
   switch (node.getKind())
@@ -225,16 +222,14 @@ RewriteResponse TheoryBVRewriter::RewriteITEBv(TNode node, bool prerewrite)
 
 RewriteResponse TheoryBVRewriter::RewriteNot(TNode node, bool prerewrite){
   Node resultNode = node;
-  
-  // // if(RewriteRule<NotXor>::applies(node)) {
-  // //   resultNode = RewriteRule<NotXor>::run<false>(node);
-  // //   return RewriteResponse(REWRITE_AGAIN_FULL, resultNode); 
-  // // }
-  resultNode = LinearRewriteStrategy
-    < RewriteRule<EvalNot>,
-      RewriteRule<NotIdemp>
-    >::apply(node);
-  
+
+  resultNode =
+      LinearRewriteStrategy<RewriteRule<NotIdemp>, RewriteRule<EvalNot>>::apply(
+          node);
+
+  // It is is safe to return REWRITE_DONE here, because `NotIdemp` removes all
+  // pairs of `bvnot` and then `EvalNot` evaluates the remaining `bvnot` if
+  // applicable.
   return RewriteResponse(REWRITE_DONE, resultNode); 
 }
 
@@ -263,30 +258,39 @@ RewriteResponse TheoryBVRewriter::RewriteExtract(TNode node, bool prerewrite) {
     }
   }
 
-  
-  resultNode = LinearRewriteStrategy
-    < RewriteRule<ExtractConstant>, 
+  resultNode = LinearRewriteStrategy<
+      // We could have an extract over extract
       RewriteRule<ExtractExtract>,
-      // We could get another extract over extract
+      // The extract may cover the whole bit-vector
       RewriteRule<ExtractWhole>,
-      // At this point only Extract-Whole could apply
-      RewriteRule<ExtractMultLeadingBit>
-      >::apply(node);
-  
-  return RewriteResponse(REWRITE_DONE, resultNode); 
+      // Rewrite extracts over wide multiplications
+      RewriteRule<ExtractMultLeadingBit>,
+      // Perform constant folding last to maximize chances that it applies
+      RewriteRule<ExtractConstant>>::apply(node);
+
+  // There are terms that can be rewritten by repeatedly alternating between
+  // ExtractExtract and ExtractConcat, so we have to be conservative here and
+  // return REWRITE_AGAIN if the node changed.
+  return RewriteResponse(resultNode != node ? REWRITE_AGAIN : REWRITE_DONE,
+                         resultNode);
 }
 
 RewriteResponse TheoryBVRewriter::RewriteConcat(TNode node, bool prerewrite)
 {
   Node resultNode = LinearRewriteStrategy<
-      RewriteRule<ConcatFlatten>,
       // Flatten the top level concatenations
-      RewriteRule<ConcatExtractMerge>,
+      RewriteRule<ConcatFlatten>,
       // Merge the adjacent extracts on non-constants
-      RewriteRule<ConcatConstantMerge>,
+      RewriteRule<ConcatExtractMerge>,
+      // Remove extracts that have no effect
+      ApplyRuleToChildren<kind::BITVECTOR_CONCAT, ExtractWhole>,
       // Merge the adjacent extracts on constants
-      ApplyRuleToChildren<kind::BITVECTOR_CONCAT, ExtractWhole>>::apply(node);
-  return RewriteResponse(REWRITE_DONE, resultNode);
+      RewriteRule<ConcatConstantMerge>>::apply(node);
+
+  // Applying ExtractWhole to the children may result in concat nodes that can
+  // be flattened by this method.
+  return RewriteResponse(resultNode != node ? REWRITE_AGAIN : REWRITE_DONE,
+                         resultNode);
 }
 
 RewriteResponse TheoryBVRewriter::RewriteAnd(TNode node, bool prerewrite)
@@ -477,7 +481,11 @@ RewriteResponse TheoryBVRewriter::RewriteNeg(TNode node, bool prerewrite) {
     }
   }
 
-  return RewriteResponse(REWRITE_DONE, resultNode); 
+  // There are cases where we need to rewrite the resulting term again. For
+  // example, if we rewrite (bvneg (bvneg (bvneg #b0))) to (bvneg #b0) then we
+  // have to rewrite again.
+  return RewriteResponse(resultNode != node ? REWRITE_AGAIN : REWRITE_DONE,
+                         resultNode);
 }
 
 RewriteResponse TheoryBVRewriter::RewriteUdiv(TNode node, bool prerewrite){
@@ -700,7 +708,7 @@ RewriteResponse TheoryBVRewriter::IdentityRewrite(TNode node, bool prerewrite) {
 }
 
 RewriteResponse TheoryBVRewriter::UndefinedRewrite(TNode node, bool prerewrite) {
-  Debug("bv-rewrite") << "TheoryBV::UndefinedRewrite for" << node;
+  Trace("bv-rewrite") << "TheoryBV::UndefinedRewrite for" << node;
   Unimplemented(); 
 } 
 

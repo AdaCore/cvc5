@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Mudathir Mohamed
+ *   Mudathir Mohamed, Mathias Preiner, Andrew Reynolds
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,13 +16,13 @@
 #include "theory/bags/theory_bags_type_enumerator.h"
 
 #include "expr/emptybag.h"
-#include "theory/bags/normal_form.h"
+#include "theory/bags/bags_utils.h"
 #include "theory_bags_type_enumerator.h"
 #include "util/rational.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace bags {
 
@@ -67,11 +67,10 @@ BagEnumerator& BagEnumerator::operator++()
   else
   {
     // increase the multiplicity of one of the elements in the current bag
-    std::map<Node, Rational> elements =
-        NormalForm::getBagElements(d_currentBag);
+    std::map<Node, Rational> elements = BagsUtils::getBagElements(d_currentBag);
     Node element = elements.begin()->first;
     elements[element] = elements[element] + Rational(1);
-    d_currentBag = NormalForm::constructConstantBagFromElements(
+    d_currentBag = BagsUtils::constructConstantBagFromElements(
         d_currentBag.getType(), elements);
   }
 
@@ -90,4 +89,4 @@ bool BagEnumerator::isFinished()
 
 }  // namespace bags
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -33,11 +33,11 @@
 #include "util/integer.h"
 #include "util/rational.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 
 using namespace theory;
 using namespace expr;
-using namespace context;
+using namespace cvc5::context;
 using namespace kind;
 using namespace theory::bv;
 
@@ -79,10 +79,10 @@ TEST_F(TestTheoryWhiteEngine, rewriter_simple)
   Node y = d_nodeManager->mkVar("y", d_nodeManager->integerType());
   Node z = d_nodeManager->mkVar("z", d_nodeManager->integerType());
 
-  // make the expression (PLUS x y (MULT z 0))
+  // make the expression (ADD x y (MULT z 0))
   Node zero = d_nodeManager->mkConst(CONST_RATIONAL, Rational("0"));
   Node zTimesZero = d_nodeManager->mkNode(MULT, z, zero);
-  Node n = d_nodeManager->mkNode(PLUS, x, y, zTimesZero);
+  Node n = d_nodeManager->mkNode(ADD, x, y, zTimesZero);
 
   Node nExpected = n;
   Node nOut;
@@ -183,4 +183,4 @@ TEST_F(TestTheoryWhiteEngine, rewrite_rules)
 }
 
 }  // namespace test
-}  // namespace cvc5
+}  // namespace cvc5::internal

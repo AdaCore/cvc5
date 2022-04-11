@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Aina Niemetz
+ *   Andrew Reynolds, Aina Niemetz, Mathias Preiner
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -16,6 +16,7 @@
 #include "theory/quantifiers/term_util.h"
 
 #include "expr/node_algorithm.h"
+#include "expr/skolem_manager.h"
 #include "theory/arith/arith_msum.h"
 #include "theory/bv/theory_bv_utils.h"
 #include "theory/quantifiers/term_database.h"
@@ -25,9 +26,9 @@
 #include "util/bitvector.h"
 #include "util/rational.h"
 
-using namespace cvc5::kind;
+using namespace cvc5::internal::kind;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace quantifiers {
 
@@ -90,7 +91,9 @@ Node TermUtil::getInstConstAttr( Node n ) {
   return n.getAttribute(InstConstantAttribute());
 }
 
-bool TermUtil::hasInstConstAttr( Node n ) {
+bool TermUtil::hasInstConstAttr(Node n)
+{
+  n = SkolemManager::getOriginalForm(n);
   return !getInstConstAttr(n).isNull();
 }
 
@@ -214,7 +217,8 @@ int TermUtil::getTermDepth( Node n ) {
 bool TermUtil::containsUninterpretedConstant( Node n ) {
   if (!n.hasAttribute(ContainsUConstAttribute()) ){
     bool ret = false;
-    if (n.getKind() == UNINTERPRETED_SORT_VALUE && n.getType().isSort())
+    if (n.getKind() == UNINTERPRETED_SORT_VALUE
+        && n.getType().isUninterpretedSort())
     {
       ret = true;
     }
@@ -263,7 +267,7 @@ Node TermUtil::mkNegate(Kind notk, Node n)
 
 bool TermUtil::isNegate(Kind k)
 {
-  return k == NOT || k == BITVECTOR_NOT || k == BITVECTOR_NEG || k == UMINUS;
+  return k == NOT || k == BITVECTOR_NOT || k == BITVECTOR_NEG || k == NEG;
 }
 
 bool TermUtil::isAssoc(Kind k, bool reqNAry)
@@ -275,7 +279,7 @@ bool TermUtil::isAssoc(Kind k, bool reqNAry)
       return false;
     }
   }
-  return k == PLUS || k == MULT || k == NONLINEAR_MULT || k == AND || k == OR
+  return k == ADD || k == MULT || k == NONLINEAR_MULT || k == AND || k == OR
          || k == XOR || k == BITVECTOR_ADD || k == BITVECTOR_MULT
          || k == BITVECTOR_AND || k == BITVECTOR_OR || k == BITVECTOR_XOR
          || k == BITVECTOR_XNOR || k == BITVECTOR_CONCAT || k == STRING_CONCAT
@@ -292,7 +296,7 @@ bool TermUtil::isComm(Kind k, bool reqNAry)
       return false;
     }
   }
-  return k == EQUAL || k == PLUS || k == MULT || k == NONLINEAR_MULT || k == AND
+  return k == EQUAL || k == ADD || k == MULT || k == NONLINEAR_MULT || k == AND
          || k == OR || k == XOR || k == BITVECTOR_ADD || k == BITVECTOR_MULT
          || k == BITVECTOR_AND || k == BITVECTOR_OR || k == BITVECTOR_XOR
          || k == BITVECTOR_XNOR || k == SET_UNION || k == SET_INTER
@@ -432,12 +436,12 @@ bool TermUtil::isIdempotentArg(Node n, Kind ik, int arg)
   TypeNode tn = n.getType();
   if (n == mkTypeValue(tn, 0))
   {
-    if (ik == PLUS || ik == OR || ik == XOR || ik == BITVECTOR_ADD
+    if (ik == ADD || ik == OR || ik == XOR || ik == BITVECTOR_ADD
         || ik == BITVECTOR_OR || ik == BITVECTOR_XOR || ik == STRING_CONCAT)
     {
       return true;
     }
-    else if (ik == MINUS || ik == BITVECTOR_SHL || ik == BITVECTOR_LSHR
+    else if (ik == SUB || ik == BITVECTOR_SHL || ik == BITVECTOR_LSHR
              || ik == BITVECTOR_ASHR || ik == BITVECTOR_SUB
              || ik == BITVECTOR_UREM)
     {
@@ -588,4 +592,4 @@ bool TermUtil::hasOffsetArg(Kind ik, int arg, int& offset, Kind& ok)
 
 }  // namespace quantifiers
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal

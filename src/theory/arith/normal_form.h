@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Tim King, Morgan Deters, Gereon Kremer
+ *   Tim King, Gereon Kremer, Morgan Deters
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -29,7 +29,7 @@
 #include "theory/arith/delta_rational.h"
 #include "util/rational.h"
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace theory {
 namespace arith {
 
@@ -292,7 +292,15 @@ public:
     static inline int cmp(const Node& n, const Node& m) {
       if ( n == m ) { return 0; }
 
-      // this is now slightly off of the old variable order.
+      // RAN < real var < int var < non-variable
+
+      bool nIsRAN = n.getKind() == Kind::REAL_ALGEBRAIC_NUMBER;
+      bool mIsRAN = m.getKind() == Kind::REAL_ALGEBRAIC_NUMBER;
+
+      if (mIsRAN != nIsRAN)
+      {
+        return nIsRAN ? -1 : 1;
+      }
 
       bool nIsInteger = n.getType().isInteger();
       bool mIsInteger = m.getType().isInteger();
@@ -792,7 +800,7 @@ private:
   static Node makePlusNode(const std::vector<Monomial>& m) {
     Assert(m.size() >= 2);
 
-    return makeNode(kind::PLUS, m.begin(), m.end());
+    return makeNode(kind::ADD, m.begin(), m.end());
   }
 
   typedef expr::NodeSelfIterator internal_iterator;
@@ -924,7 +932,7 @@ public:
     if(singleton()){
       return 1;
     }else{
-      Assert(getNode().getKind() == kind::PLUS);
+      Assert(getNode().getKind() == kind::ADD);
       return getNode().getNumChildren();
     }
   }
@@ -947,13 +955,13 @@ public:
   bool variableMonomialAreStrictlyGreater(const Monomial& m) const;
 
   void printList() const {
-    if(Debug.isOn("normal-form")){
-      Debug("normal-form") << "start list" << std::endl;
+    if(TraceIsOn("normal-form")){
+      Trace("normal-form") << "start list" << std::endl;
       for(iterator i = begin(), oend = end(); i != oend; ++i) {
         const Monomial& m =*i;
         m.print();
       }
-      Debug("normal-form") << "end list" << std::endl;
+      Trace("normal-form") << "end list" << std::endl;
     }
   }
 
@@ -1081,11 +1089,16 @@ public:
   }
 
   uint32_t numMonomials() const {
-    if( getNode().getKind() == kind::PLUS ){
+    if (getNode().getKind() == kind::ADD)
+    {
       return getNode().getNumChildren();
-    }else if(isZero()){
+    }
+    else if (isZero())
+    {
       return 0;
-    }else{
+    }
+    else
+    {
       return 1;
     }
   }
@@ -1139,7 +1152,8 @@ public:
 class SumPair : public NodeWrapper {
 private:
   static Node toNode(const Polynomial& p, const Constant& c){
-    return NodeManager::currentNM()->mkNode(kind::PLUS, p.getNode(), c.getNode());
+    return NodeManager::currentNM()->mkNode(
+        kind::ADD, p.getNode(), c.getNode());
   }
 
   SumPair(TNode n) : NodeWrapper(n) { Assert(isNormalForm()); }
@@ -1158,7 +1172,8 @@ private:
   }
 
   static bool isMember(TNode n) {
-    if(n.getKind() == kind::PLUS && n.getNumChildren() == 2){
+    if (n.getKind() == kind::ADD && n.getNumChildren() == 2)
+    {
       if(Constant::isMember(n[1])){
         if(Polynomial::isMember(n[0])){
           Polynomial p = Polynomial::parsePolynomial(n[0]);
@@ -1169,7 +1184,9 @@ private:
       }else{
         return false;
       }
-    }else{
+    }
+    else
+    {
       return false;
     }
   }
@@ -1444,6 +1461,6 @@ public:
 
 }  // namespace arith
 }  // namespace theory
-}  // namespace cvc5
+}  // namespace cvc5::internal
 
 #endif /* CVC5__THEORY__ARITH__NORMAL_FORM_H */

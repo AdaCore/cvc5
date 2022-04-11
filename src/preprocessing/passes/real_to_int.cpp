@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2021 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -27,10 +27,10 @@
 #include "theory/theory_model.h"
 #include "util/rational.h"
 
-using namespace cvc5::kind;
-using namespace cvc5::theory;
+using namespace cvc5::internal::kind;
+using namespace cvc5::internal::theory;
 
-namespace cvc5 {
+namespace cvc5::internal {
 namespace preprocessing {
 namespace passes {
 
@@ -134,7 +134,7 @@ Node RealToInt::realToIntInternal(TNode n, NodeMap& cache, std::vector<Node>& va
             Node sumt =
                 sum.empty()
                     ? nm->mkConstInt(Rational(0))
-                    : (sum.size() == 1 ? sum[0] : nm->mkNode(kind::PLUS, sum));
+                    : (sum.size() == 1 ? sum[0] : nm->mkNode(kind::ADD, sum));
             ret = nm->mkNode(
                 ret_lit.getKind(), sumt, nm->mkConstInt(Rational(0)));
             if (!ret_pol)
@@ -213,4 +213,4 @@ PreprocessingPassResult RealToInt::applyInternal(
 
 }  // namespace passes
 }  // namespace preprocessing
-}  // namespace cvc5
+}  // namespace cvc5::internal
