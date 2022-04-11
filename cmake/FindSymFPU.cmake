@@ -15,7 +15,7 @@
 # SymFPU - interface target for the SymFPU headers
 ##
 
-find_path(SymFPU_INCLUDE_DIR NAMES symfpu/core/unpackedFloat.h)
+find_path(SymFPU_INCLUDE_DIR NAMES symfpu/core/unpackedFloat.h NO_CMAKE_FIND_ROOT_PATH)
 
 set(SymFPU_FOUND_SYSTEM FALSE)
 if(SymFPU_INCLUDE_DIR)

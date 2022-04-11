@@ -17,8 +17,8 @@
 
 include(deps-helper)
 
-find_path(GMP_INCLUDE_DIR NAMES gmp.h gmpxx.h)
-find_library(GMP_LIBRARIES NAMES gmp)
+find_path(GMP_INCLUDE_DIR NAMES gmp.h gmpxx.h NO_CMAKE_FIND_ROOT_PATH)
+find_library(GMP_LIBRARIES NAMES gmp NO_CMAKE_FIND_ROOT_PATH)
 
 set(GMP_FOUND_SYSTEM FALSE)
 if(GMP_INCLUDE_DIR AND GMP_LIBRARIES)
