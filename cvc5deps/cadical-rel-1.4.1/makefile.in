@@ -9,6 +9,7 @@
 
 CXX=@CXX@
 CXXFLAGS=@CXXFLAGS@
+AR=@AR@
 
 ############################################################################
 #    It is usually not necessary to change anything below this line!       #
@@ -45,7 +46,7 @@ mobical: mobical.o libcadical.a makefile
 	$(COMPILE) -o $@ $< -L. -lcadical
 
 libcadical.a: $(OBJ) makefile
-	ar rc $@ $(OBJ)
+	$(AR) rc $@ $(OBJ)
 
 #--------------------------------------------------------------------------#
 
