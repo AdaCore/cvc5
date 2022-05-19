@@ -1,5 +1,5 @@
 [gerrit]
 host = git.adacore.com
-project = cvc4
-defaultbranch = master-cvc5
+project = cvc5
+defaultbranch = master
 defaultremote = origin
