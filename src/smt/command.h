@@ -58,19 +58,6 @@ std::ostream& operator<<(std::ostream&, const Command*) CVC5_EXPORT;
 std::ostream& operator<<(std::ostream&, const CommandStatus&) CVC5_EXPORT;
 std::ostream& operator<<(std::ostream&, const CommandStatus*) CVC5_EXPORT;
 
-/** The status an SMT benchmark can have */
-enum BenchmarkStatus
-{
-  /** Benchmark is satisfiable */
-  SMT_SATISFIABLE,
-  /** Benchmark is unsatisfiable */
-  SMT_UNSATISFIABLE,
-  /** The status of the benchmark is unknown */
-  SMT_UNKNOWN
-}; /* enum BenchmarkStatus */
-
-std::ostream& operator<<(std::ostream& out, BenchmarkStatus status) CVC5_EXPORT;
-
 /**
  * IOStream manipulator to print success messages or not.
  *
@@ -370,6 +357,8 @@ class CVC5_EXPORT AssertCommand : public Command
 class CVC5_EXPORT PushCommand : public Command
 {
  public:
+  PushCommand(uint32_t nscopes);
+
   void invoke(cvc5::Solver* solver, SymbolManager* sm) override;
   Command* clone() const override;
   std::string getCommandName() const override;
@@ -378,11 +367,16 @@ class CVC5_EXPORT PushCommand : public Command
                 size_t dag = 1,
                 internal::Language language =
                     internal::Language::LANG_AUTO) const override;
+
+ private:
+  uint32_t d_nscopes;
 }; /* class PushCommand */
 
 class CVC5_EXPORT PopCommand : public Command
 {
  public:
+  PopCommand(uint32_t nscopes);
+
   void invoke(cvc5::Solver* solver, SymbolManager* sm) override;
   Command* clone() const override;
   std::string getCommandName() const override;
@@ -391,6 +385,9 @@ class CVC5_EXPORT PopCommand : public Command
                 size_t dag = 1,
                 internal::Language language =
                     internal::Language::LANG_AUTO) const override;
+
+ private:
+  uint32_t d_nscopes;
 }; /* class PopCommand */
 
 class CVC5_EXPORT DeclarationDefinitionCommand : public Command
@@ -453,6 +450,35 @@ class CVC5_EXPORT DeclarePoolCommand : public DeclarationDefinitionCommand
                 internal::Language language =
                     internal::Language::LANG_AUTO) const override;
 }; /* class DeclarePoolCommand */
+
+class CVC5_EXPORT DeclareOracleFunCommand : public Command
+{
+ public:
+  DeclareOracleFunCommand(const std::string& id, Sort sort);
+  DeclareOracleFunCommand(const std::string& id,
+                          Sort sort,
+                          const std::string& binName);
+  const std::string& getIdentifier() const;
+  Sort getSort() const;
+  const std::string& getBinaryName() const;
+
+  void invoke(Solver* solver, SymbolManager* sm) override;
+  Command* clone() const override;
+  std::string getCommandName() const override;
+  void toStream(std::ostream& out,
+                int toDepth = -1,
+                size_t dag = 1,
+                internal::Language language =
+                    internal::Language::LANG_AUTO) const override;
+
+ protected:
+  /** The identifier */
+  std::string d_id;
+  /** The (possibly function) sort */
+  Sort d_sort;
+  /** The binary name, or "" if none is provided */
+  std::string d_binName;
+};
 
 class CVC5_EXPORT DeclareSortCommand : public DeclarationDefinitionCommand
 {

@@ -903,17 +903,24 @@ enum Kind : int32_t
    */
   DIVISIBLE,
   /**
-   * Multiple-precision rational constant.
+   * Arbitrary-precision rational constant.
    *
    * - Create Term of this Kind with:
    *
-   *   - Solver::mkInteger(const std::string&) const
-   *   - Solver::mkInteger(int64_t) const
    *   - Solver::mkReal(const std::string&) const
    *   - Solver::mkReal(int64_t) const
    *   - Solver::mkReal(int64_t, int64_t) const
    */
   CONST_RATIONAL,
+  /**
+   * Arbitrary-precision integer constant.
+   *
+   * - Create Term of this Kind with:
+   *
+   *   - Solver::mkInteger(const std::string&) const
+   *   - Solver::mkInteger(int64_t) const
+   */
+  CONST_INTEGER,
   /**
    * Less than, chainable.
    *
@@ -3674,6 +3681,33 @@ enum Kind : int32_t
    */
   BAG_FOLD,
   /**
+   * Bag partition.
+   *
+   * \rst
+   * This operator partitions of a bag of elements into disjoint bags.
+   * (bag.partition :math:`r \; B`) partitions the elements of bag :math:`B`
+   * of type :math:`(Bag \; E)` based on the equivalence relations :math:`r` of
+   * type :math:`(\rightarrow \; E \; E \; Bool)`.
+   * It returns a bag of bags of type :math:`(Bag \; (Bag \; E))`.
+   *
+   * - Arity: ``2``
+   *
+   *   - ``1:`` Term of function Sort :math:`(\rightarrow \; E \; E \; Bool)`
+   *   - ``2:`` Term of bag Sort (Bag :math:`E`)
+   * \endrst
+   *
+   * - Create Term of this Kind with:
+   *
+   *   - Solver::mkTerm(Kind, const std::vector<Term>&) const
+   *   - Solver::mkTerm(const Op&, const std::vector<Term>&) const
+   *
+   * \rst
+   * .. warning:: This kind is experimental and may be changed or removed in
+   *              future versions.
+   * \endrst
+   */
+  BAG_PARTITION,
+  /**
    * Table cross product.
    *
    * - Arity: ``2``
@@ -3695,7 +3729,74 @@ enum Kind : int32_t
    * \endrst
    */
   TABLE_PRODUCT,
-
+  /**
+   * Table projection operator extends tuple projection operator to tables.
+   *
+   * - Arity: ``1``
+   *   - ``1:`` Term of table Sort
+   *
+   * - Indices: ``n``
+   *   - ``1..n:`` Indices of the projection
+   *
+   * - Create Term of this Kind with:
+   *   - Solver::mkTerm(const Op&, const std::vector<Term>&) const
+   *
+   * - Create Op of this kind with:
+   *   - Solver::mkOp(Kind, const std::vector<uint32_t>&) const
+   */
+  TABLE_PROJECT,
+  /**
+   * Table aggregate operator has the form
+   * :math:`((\_ \; table.aggr \; n_1 ... n_k) f i A)`
+   * where :math:`n_1, ..., n_k` are natural numbers,
+   * :math:`f` is a function of type
+   * :math:`(\rightarrow (Tuple \;  T_1 \; ... \; T_j)\; T \; T)`,
+   * :math:`i` has the type :math:`T`,
+   * and :math`A` has type :math:`Table T_1 ... T_j`.
+   * The returned type is :math:`(Bag \; T)`.
+   *
+   * This operator aggregates elements in A that have the same tuple projection
+   * with indices n_1, ..., n_k using the combining function :math:`f`,
+   * and initial value :math:`i`.
+   *
+   * - Arity: ``3``
+   *   - ``1:`` Term of sort :math:`(\rightarrow (Tuple \;  T_1 \; ... \; T_j)\; T \; T)`
+   *   - ``2:`` Term of Sort :math:`T`
+   *   - ``3:`` Term of table sort :math:`Table T_1 ... T_j`
+   *
+   * - Indices: ``n``
+   *   - ``1..n:`` Indices of the projection
+   *
+   * - Create Term of this Kind with:
+   *   - Solver::mkTerm(const Op&, const std::vector<Term>&) const
+   *
+   * - Create Op of this kind with:
+   *   - Solver::mkOp(Kind, const std::vector<uint32_t>&) const
+   */
+  TABLE_AGGREGATE,
+  /**
+   * Table join operator has the form
+   *  :math:`((\_ \; table.join \; m_1 \; n_1 \; \dots \; m_k \; n_k) \; A \; B)`
+   *  where *  :math:`m_1 \; n_1 \; \dots \; m_k \; n_k` are natural numbers,
+   *  and A, B are tables.
+   *  This operator filters the product of two bags based on the equality of
+   *  projected tuples using indices :math:`m_1, \dots, m_k` in table A,
+   *  and indices :math:`n_1, \dots, n_k` in table B.
+   *
+   * - Arity: ``2``
+   *   - ``1:`` Term of table Sort
+   *   - ``2:`` Term of table Sort
+   *
+   * - Indices: ``n``
+   *   - ``1..n:``  Indices of the projection
+   *
+   * - Create Term of this Kind with:
+   *   - Solver::mkTerm(const Op&, const std::vector<Term>&) const
+   *
+   * - Create Op of this kind with:
+   *   - Solver::mkOp(Kind, const std::vector<uint32_t>&) const
+   */
+  TABLE_JOIN,
   /* Strings --------------------------------------------------------------- */
 
   /**

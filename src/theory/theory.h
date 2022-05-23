@@ -203,15 +203,6 @@ class Theory : protected EnvObj
    */
   bool proofsEnabled() const;
 
-  /**
-   * Set separation logic heap. This is called when the location and data
-   * types for separation logic are determined. This should be called at
-   * most once, before solving.
-   *
-   * This currently should be overridden by the separation logic theory only.
-   */
-  virtual void declareSepHeap(TypeNode locT, TypeNode dataT) {}
-
   void printFacts(std::ostream& os) const;
   void debugPrintFacts() const;
 
@@ -224,7 +215,7 @@ class Theory : protected EnvObj
    *
    * The following criteria imply that x -> val is *not* a legal elimination:
    * (1) If x is contained in val,
-   * (2) If the type of val is not a subtype of the type of x,
+   * (2) If the type of val is not the same as the type of x,
    * (3) If val contains an operator that cannot be evaluated, and
    * produceModels is true. For example, x -> sqrt(2) is not a legal
    * elimination if we are producing models. This is because we care about the

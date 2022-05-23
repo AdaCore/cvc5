@@ -198,8 +198,6 @@ void TheorySetsPrivate::fullEffortReset()
   Assert(d_equalityEngine->consistent());
   d_fullCheckIncomplete = false;
   d_fullCheckIncompleteId = IncompleteId::UNKNOWN;
-  d_most_common_type.clear();
-  d_most_common_type_term.clear();
   d_card_enabled = false;
   d_rels_enabled = false;
   // reset the state object
@@ -227,19 +225,9 @@ void TheorySetsPrivate::fullEffortCheck()
     while (!eqcs_i.isFinished())
     {
       Node eqc = (*eqcs_i);
-      bool isSet = false;
       TypeNode tn = eqc.getType();
       d_state.registerEqc(tn, eqc);
       eqcTypeCount[tn]++;
-      // common type node and term
-      TypeNode tnc;
-      Node tnct;
-      if (tn.isSet())
-      {
-        isSet = true;
-        tnc = tn.getSetElementType();
-        tnct = eqc;
-      }
       Trace("sets-eqc") << "[" << eqc << "] : ";
       eq::EqClassIterator eqc_i = eq::EqClassIterator(eqc, d_equalityEngine);
       while (!eqc_i.isFinished())
@@ -257,18 +245,6 @@ void TheorySetsPrivate::fullEffortCheck()
           }
         }
         TypeNode tnn = n.getType();
-        if (isSet)
-        {
-          Assert(tnn.isSet());
-          TypeNode tnnel = tnn.getSetElementType();
-          tnc = TypeNode::mostCommonTypeNode(tnc, tnnel);
-          Assert(!tnc.isNull());
-          // update the common type term
-          if (tnc == tnnel)
-          {
-            tnct = n;
-          }
-        }
         // register it with the state
         d_state.registerTerm(eqc, tnn, n);
         Kind nk = n.getKind();
@@ -311,12 +287,6 @@ void TheorySetsPrivate::fullEffortCheck()
           d_rels_enabled = true;
         }
         ++eqc_i;
-      }
-      if (isSet)
-      {
-        Assert(tnct.getType().getSetElementType() == tnc);
-        d_most_common_type[eqc] = tnc;
-        d_most_common_type_term[eqc] = tnct;
       }
       Trace("sets-eqc") << std::endl;
       ++eqcs_i;
@@ -740,6 +710,7 @@ void TheorySetsPrivate::checkDisequalities()
 void TheorySetsPrivate::checkReduceComprehensions()
 {
   NodeManager* nm = NodeManager::currentNM();
+  SkolemManager* sm = nm->getSkolemManager();
   const std::vector<Node>& comps = d_state.getComprehensionSets();
   for (const Node& n : comps)
   {
@@ -763,9 +734,12 @@ void TheorySetsPrivate::checkReduceComprehensions()
     body = body.substitute(vars.begin(), vars.end(), subs.begin(), subs.end());
     Node bvl = nm->mkNode(BOUND_VAR_LIST, subs);
     body = nm->mkNode(EXISTS, bvl, body);
-    Node mem = nm->mkNode(SET_MEMBER, v, n);
-    Node lem =
-        nm->mkNode(FORALL, nm->mkNode(BOUND_VAR_LIST, v), body.eqNode(mem));
+    Node k = sm->mkPurifySkolem(n, "kcomp");
+    Node mem = nm->mkNode(SET_MEMBER, v, k);
+    Node lem = nm->mkNode(
+        AND,
+        k.eqNode(n),
+        nm->mkNode(FORALL, nm->mkNode(BOUND_VAR_LIST, v), body.eqNode(mem)));
     Trace("sets-comprehension")
         << "Comprehension reduction: " << lem << std::endl;
     d_im.lemma(lem, InferenceId::SETS_COMPREHENSION);
@@ -923,40 +897,6 @@ bool TheorySetsPrivate::isCareArg(Node n, unsigned a)
   return false;
 }
 
-/******************** Model generation ********************/
-/******************** Model generation ********************/
-/******************** Model generation ********************/
-
-namespace {
-/**
- * This function is a helper function to print sets as
- * Set A = { a0, a1, a2, }
- * instead of
- * (union (singleton a0) (union (singleton a1) (singleton a2)))
- */
-void traceSetElementsRecursively(stringstream& stream, const Node& set)
-{
-  Assert(set.getType().isSet());
-  if (set.getKind() == SET_SINGLETON)
-  {
-    stream << set[0] << ", ";
-  }
-  if (set.getKind() == SET_UNION)
-  {
-    traceSetElementsRecursively(stream, set[0]);
-    traceSetElementsRecursively(stream, set[1]);
-  }
-}
-
-std::string traceElements(const Node& set)
-{
-  std::stringstream stream;
-  traceSetElementsRecursively(stream, set);
-  return stream.str();
-}
-
-}  // namespace
-
 bool TheorySetsPrivate::collectModelValues(TheoryModel* m,
                                            const std::set<Node>& termSet)
 {
@@ -992,13 +932,12 @@ bool TheorySetsPrivate::collectModelValues(TheoryModel* m,
         const std::map<Node, Node>& emems = d_state.getMembers(eqc);
         if (!emems.empty())
         {
-          TypeNode elementType = eqc.getType().getSetElementType();
           for (const std::pair<const Node, Node>& itmm : emems)
           {
             // when we have y -> (set.member x S) where rep(x)=y, we use x
             // in the model here. Using y may not be legal with respect to
             // subtyping, since y may be real where x is an int.
-            Node t = nm->mkSingleton(elementType, itmm.second[0]);
+            Node t = nm->mkNode(SET_SINGLETON, itmm.second[0]);
             els.push_back(t);
           }
         }
@@ -1036,8 +975,7 @@ bool TheorySetsPrivate::collectModelValues(TheoryModel* m,
         m->assertSkeleton(el);
       }
 
-      Trace("sets-model") << "Set " << eqc << " = { " << traceElements(rep)
-                          << " }" << std::endl;
+      Trace("sets-model") << "Set " << eqc << " = " << els << std::endl;
     }
   }
 
@@ -1272,7 +1210,7 @@ TrustNode TheorySetsPrivate::expandIsSingletonOperator(const Node& node)
   TypeNode setType = set.getType();
   ensureFirstClassSetType(setType);
   Node boundVar = nm->mkBoundVar(setType.getSetElementType());
-  Node singleton = nm->mkSingleton(setType.getSetElementType(), boundVar);
+  Node singleton = nm->mkNode(SET_SINGLETON, boundVar);
   Node equal = set.eqNode(singleton);
   std::vector<Node> variables = {boundVar};
   Node boundVars = nm->mkNode(BOUND_VAR_LIST, variables);

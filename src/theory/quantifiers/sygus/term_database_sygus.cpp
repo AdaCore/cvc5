@@ -51,12 +51,13 @@ std::ostream& operator<<(std::ostream& os, EnumeratorRole r)
   return os;
 }
 
-TermDbSygus::TermDbSygus(Env& env, QuantifiersState& qs)
+TermDbSygus::TermDbSygus(Env& env, QuantifiersState& qs, OracleChecker* oc)
     : EnvObj(env),
       d_qstate(qs),
       d_syexp(new SygusExplain(this)),
       d_funDefEval(new FunDefEvaluator(env)),
-      d_eval_unfold(new SygusEvalUnfold(env, this))
+      d_eval_unfold(new SygusEvalUnfold(env, this)),
+      d_ochecker(oc)
 {
   d_true = NodeManager::currentNM()->mkConst( true );
   d_false = NodeManager::currentNM()->mkConst( false );
@@ -159,7 +160,7 @@ Node TermDbSygus::getProxyVariable(TypeNode tn, Node c)
 {
   Assert(tn.isDatatype());
   Assert(tn.getDType().isSygus());
-  Assert(tn.getDType().getSygusType().isComparableTo(c.getType()));
+  Assert(tn.getDType().getSygusType() == c.getType());
 
   std::map<Node, Node>::iterator it = d_proxy_vars[tn].find(c);
   if (it == d_proxy_vars[tn].end())
@@ -290,7 +291,7 @@ Node TermDbSygus::canonizeBuiltin(Node n, std::map<TypeNode, int>& var_count)
   }
   Trace("sygus-db-canon") << "  ...normalized " << n << " --> " << ret
                           << std::endl;
-  Assert(ret.getType().isComparableTo(n.getType()));
+  Assert(ret.getType() == n.getType());
   return ret;
 }
 
@@ -307,7 +308,7 @@ Node TermDbSygus::sygusToBuiltin(Node n, TypeNode tn)
     // if its a constant, we use the datatype utility version
     return datatypes::utils::sygusToBuiltin(n);
   }
-  Assert(n.getType().isComparableTo(tn));
+  Assert(n.getType() == tn);
   if (!tn.isDatatype())
   {
     return n;
@@ -404,7 +405,7 @@ void TermDbSygus::registerEnumerator(Node e,
   Trace("sygus-db") << "  registering symmetry breaking clauses..."
                     << std::endl;
   // depending on if we are using symbolic constructors, introduce symmetry
-  // breaking lemma templates for each relevant subtype of the grammar
+  // breaking lemma templates for each relevant subfield type of the grammar
   SygusTypeInfo& eti = getTypeInfo(et);
   std::vector<TypeNode> sf_types;
   eti.getSubfieldTypes(sf_types);
@@ -738,6 +739,7 @@ SygusTypeInfo& TermDbSygus::getTypeInfo(TypeNode tn)
 
 Node TermDbSygus::rewriteNode(Node n) const
 {
+  Trace("sygus-rewrite") << "Rewrite node: " << n << std::endl;
   Node res;
   if (options().datatypes.sygusRewriter == options::SygusRewriterMode::EXTENDED)
   {
@@ -747,6 +749,7 @@ Node TermDbSygus::rewriteNode(Node n) const
   {
     res = rewrite(n);
   }
+  Trace("sygus-rewrite") << "Rewrite node post-rewrite: " << res << std::endl;
   if (res.isConst())
   {
     // constant, we are done
@@ -761,12 +764,19 @@ Node TermDbSygus::rewriteNode(Node n) const
       Node fres = d_funDefEval->evaluateDefinitions(res);
       if (!fres.isNull())
       {
-        return fres;
+        res = fres;
       }
       // It may have failed, in which case there are undefined symbols in res or
       // we reached the limit of evaluations. In this case, we revert to the
       // result of rewriting in the return statement below.
     }
+    Trace("sygus-rewrite") << "Rewrite node post-rec-fun: " << res << std::endl;
+  }
+  if (d_ochecker != nullptr)
+  {
+    // evaluate oracles
+    res = d_ochecker->evaluate(res);
+    Trace("sygus-rewrite") << "Rewrite node post-oracles: " << res << std::endl;
   }
   return res;
 }

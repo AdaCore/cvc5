@@ -124,21 +124,6 @@ ostream& operator<<(ostream& out, const CommandStatus* s)
   return out;
 }
 
-/* output stream insertion operator for benchmark statuses */
-std::ostream& operator<<(std::ostream& out, BenchmarkStatus status)
-{
-  switch (status)
-  {
-    case SMT_SATISFIABLE: return out << "sat";
-
-    case SMT_UNSATISFIABLE: return out << "unsat";
-
-    case SMT_UNKNOWN: return out << "unknown";
-
-    default: return out << "BenchmarkStatus::[UNKNOWNSTATUS!]";
-  }
-}
-
 /* -------------------------------------------------------------------------- */
 /* class CommandPrintSuccess                                                  */
 /* -------------------------------------------------------------------------- */
@@ -367,11 +352,13 @@ void AssertCommand::toStream(std::ostream& out,
 /* class PushCommand                                                          */
 /* -------------------------------------------------------------------------- */
 
+PushCommand::PushCommand(uint32_t nscopes) : d_nscopes(nscopes) {}
+
 void PushCommand::invoke(cvc5::Solver* solver, SymbolManager* sm)
 {
   try
   {
-    solver->push();
+    solver->push(d_nscopes);
     d_commandStatus = CommandSuccess::instance();
   }
   catch (exception& e)
@@ -380,7 +367,7 @@ void PushCommand::invoke(cvc5::Solver* solver, SymbolManager* sm)
   }
 }
 
-Command* PushCommand::clone() const { return new PushCommand(); }
+Command* PushCommand::clone() const { return new PushCommand(d_nscopes); }
 std::string PushCommand::getCommandName() const { return "push"; }
 
 void PushCommand::toStream(std::ostream& out,
@@ -388,18 +375,20 @@ void PushCommand::toStream(std::ostream& out,
                            size_t dag,
                            Language language) const
 {
-  Printer::getPrinter(language)->toStreamCmdPush(out);
+  Printer::getPrinter(language)->toStreamCmdPush(out, d_nscopes);
 }
 
 /* -------------------------------------------------------------------------- */
 /* class PopCommand                                                           */
 /* -------------------------------------------------------------------------- */
 
+PopCommand::PopCommand(uint32_t nscopes) : d_nscopes(nscopes) {}
+
 void PopCommand::invoke(cvc5::Solver* solver, SymbolManager* sm)
 {
   try
   {
-    solver->pop();
+    solver->pop(d_nscopes);
     d_commandStatus = CommandSuccess::instance();
   }
   catch (exception& e)
@@ -408,7 +397,7 @@ void PopCommand::invoke(cvc5::Solver* solver, SymbolManager* sm)
   }
 }
 
-Command* PopCommand::clone() const { return new PopCommand(); }
+Command* PopCommand::clone() const { return new PopCommand(d_nscopes); }
 std::string PopCommand::getCommandName() const { return "pop"; }
 
 void PopCommand::toStream(std::ostream& out,
@@ -416,7 +405,7 @@ void PopCommand::toStream(std::ostream& out,
                           size_t dag,
                           Language language) const
 {
-  Printer::getPrinter(language)->toStreamCmdPop(out);
+  Printer::getPrinter(language)->toStreamCmdPop(out, d_nscopes);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1116,7 +1105,7 @@ void DeclareFunctionCommand::toStream(std::ostream& out,
 }
 
 /* -------------------------------------------------------------------------- */
-/* class DeclareFunctionCommand                                               */
+/* class DeclarePoolCommand                                               */
 /* -------------------------------------------------------------------------- */
 
 DeclarePoolCommand::DeclarePoolCommand(const std::string& id,
@@ -1167,6 +1156,72 @@ void DeclarePoolCommand::toStream(std::ostream& out,
       d_func.toString(),
       sortToTypeNode(d_sort),
       termVectorToNodes(d_initValue));
+}
+
+/* -------------------------------------------------------------------------- */
+/* class DeclareOracleFunCommand */
+/* -------------------------------------------------------------------------- */
+
+DeclareOracleFunCommand::DeclareOracleFunCommand(const std::string& id,
+                                                 Sort sort)
+    : d_id(id), d_sort(sort), d_binName("")
+{
+}
+DeclareOracleFunCommand::DeclareOracleFunCommand(const std::string& id,
+                                                 Sort sort,
+                                                 const std::string& binName)
+    : d_id(id), d_sort(sort), d_binName(binName)
+{
+}
+
+const std::string& DeclareOracleFunCommand::getIdentifier() const
+{
+  return d_id;
+}
+
+Sort DeclareOracleFunCommand::getSort() const { return d_sort; }
+
+const std::string& DeclareOracleFunCommand::getBinaryName() const
+{
+  return d_binName;
+}
+
+void DeclareOracleFunCommand::invoke(Solver* solver, SymbolManager* sm)
+{
+  std::vector<Sort> args;
+  Sort ret;
+  if (d_sort.isFunction())
+  {
+    args = d_sort.getFunctionDomainSorts();
+    ret = d_sort.getFunctionCodomainSort();
+  }
+  else
+  {
+    ret = d_sort;
+  }
+  // will call solver declare oracle function when available in API
+  d_commandStatus = CommandSuccess::instance();
+}
+
+Command* DeclareOracleFunCommand::clone() const
+{
+  DeclareOracleFunCommand* dfc =
+      new DeclareOracleFunCommand(d_id, d_sort, d_binName);
+  return dfc;
+}
+
+std::string DeclareOracleFunCommand::getCommandName() const
+{
+  return "declare-oracle-fun";
+}
+
+void DeclareOracleFunCommand::toStream(std::ostream& out,
+                                       int toDepth,
+                                       size_t dag,
+                                       Language language) const
+{
+  Printer::getPrinter(language)->toStreamCmdDeclareOracleFun(
+      out, d_id, sortToTypeNode(d_sort), d_binName);
 }
 
 /* -------------------------------------------------------------------------- */

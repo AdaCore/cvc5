@@ -177,8 +177,7 @@ Node CandidateGeneratorQELitDeq::getNextCandidate(){
     Node n = (*d_eqc_false);
     ++d_eqc_false;
     if( n.getKind()==d_match_pattern.getKind() ){
-      if (n[0].getType().isComparableTo(d_match_pattern_type)
-          && isLegalCandidate(n))
+      if (n[0].getType() == d_match_pattern_type && isLegalCandidate(n))
       {
         //found an iff or equality, try to match it
         //DO_THIS: cache to avoid redundancies?
@@ -212,7 +211,8 @@ Node CandidateGeneratorQEAll::getNextCandidate() {
   while( !d_eq.isFinished() ){
     TNode n = (*d_eq);
     ++d_eq;
-    if( n.getType().isComparableTo( d_match_pattern_type ) ){
+    if (n.getType() == d_match_pattern_type)
+    {
       TNode nh = tdb->getEligibleTermInEqc(n);
       if( !nh.isNull() ){
         if (options::instMaxLevel() != -1)
@@ -309,37 +309,19 @@ CandidateGeneratorSelector::CandidateGeneratorSelector(QuantifiersState& qs,
 {
   Trace("sel-trigger") << "Selector trigger: " << mpat << std::endl;
   Assert(mpat.getKind() == APPLY_SELECTOR);
-  // NOTE: could use qs.getValuation().getPreprocessedTerm(mpat); when
-  // expand definitions is eliminated, however, this also requires avoiding
-  // term formula removal.
+  // Get the expanded form of the selector, meaning that we will match on
+  // the shared selector if shared selectors are enabled.
   Node mpatExp = datatypes::DatatypesRewriter::expandApplySelector(mpat);
   Trace("sel-trigger") << "Expands to: " << mpatExp << std::endl;
-  if (mpatExp.getKind() == ITE)
-  {
-    Assert(mpatExp[1].getKind() == APPLY_SELECTOR);
-    Assert(mpatExp[2].getKind() == APPLY_UF);
-    d_selOp = d_treg.getTermDatabase()->getMatchOperator(mpatExp[1]);
-    d_ufOp = d_treg.getTermDatabase()->getMatchOperator(mpatExp[2]);
-  }
-  else if (mpatExp.getKind() == APPLY_SELECTOR)
-  {
-    // corner case of datatype with one constructor
-    d_selOp = d_treg.getTermDatabase()->getMatchOperator(mpatExp);
-  }
-  else
-  {
-    // corner case of a wrongly applied selector as a trigger
-    Assert(mpatExp.getKind() == APPLY_UF);
-    d_ufOp = d_treg.getTermDatabase()->getMatchOperator(mpatExp);
-  }
-  Assert(d_selOp != d_ufOp);
+  Assert (mpatExp.getKind() == APPLY_SELECTOR);
+  d_selOp = d_treg.getTermDatabase()->getMatchOperator(mpatExp);
 }
 
 void CandidateGeneratorSelector::reset(Node eqc)
 {
   Trace("sel-trigger-debug") << "Reset in eqc=" << eqc << std::endl;
   // start with d_selOp, if it exists
-  resetForOperator(eqc, !d_selOp.isNull()? d_selOp : d_ufOp);
+  resetForOperator(eqc, d_selOp);
 }
 
 Node CandidateGeneratorSelector::getNextCandidate()
@@ -349,20 +331,6 @@ Node CandidateGeneratorSelector::getNextCandidate()
   {
     Trace("sel-trigger-debug") << "...next candidate is " << nextc << std::endl;
     return nextc;
-  }
-  else if (d_op == d_selOp)
-  {
-    if (d_ufOp.isNull())
-    {
-      // corner case: selector cannot be wrongly applied (1-cons case)
-      d_op = Node::null();
-    }
-    else
-    {
-      // finished correctly applied selectors, now try incorrectly applied ones
-      resetForOperator(d_eqc, d_ufOp);
-      return getNextCandidate();
-    }
   }
   Trace("sel-trigger-debug") << "...finished" << std::endl;
   // no more candidates
