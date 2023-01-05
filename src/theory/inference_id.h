@@ -192,6 +192,7 @@ enum class InferenceId
   BAGS_SKOLEM,
   BAGS_EQUALITY,
   BAGS_DISEQUALITY,
+  BAGS_CG_SPLIT,
   BAGS_EMPTY,
   BAGS_UNION_DISJOINT,
   BAGS_UNION_MAX,
@@ -210,6 +211,13 @@ enum class InferenceId
   TABLES_PRODUCT_DOWN,
   TABLES_JOIN_UP,
   TABLES_JOIN_DOWN,
+  TABLES_GROUP_NOT_EMPTY,
+  TABLES_GROUP_UP1,
+  TABLES_GROUP_UP2,
+  TABLES_GROUP_DOWN,
+  TABLES_GROUP_PART_COUNT,
+  TABLES_GROUP_SAME_PROJECTION,
+  TABLES_GROUP_SAME_PART,
   // ---------------------------------- end bags theory
 
   // ---------------------------------- bitvector theory
@@ -333,6 +341,8 @@ enum class InferenceId
   QUANTIFIERS_INST_CEGQI,
   // instantiations from syntax-guided instantiation
   QUANTIFIERS_INST_SYQI,
+  // instantiations from model-based instantiation
+  QUANTIFIERS_INST_MBQI,
   // instantiations from enumerative instantiation
   QUANTIFIERS_INST_ENUM,
   // instantiations from pool instantiation
@@ -380,6 +390,8 @@ enum class InferenceId
   QUANTIFIERS_SYGUS_STREAM_EXCLUDE_CURRENT,
   // ~Q where Q is a PBE conjecture with conflicting examples
   QUANTIFIERS_SYGUS_EXAMPLE_INFER_CONTRA,
+  // infeasible determined by single-invocation solver
+  QUANTIFIERS_SYGUS_SI_INFEASIBLE,
   // unif+pi symmetry breaking between multiple enumerators
   QUANTIFIERS_SYGUS_UNIF_PI_INTER_ENUM_SB,
   // unif+pi separation lemma
@@ -414,6 +426,8 @@ enum class InferenceId
   QUANTIFIERS_SYGUS_PBE_EXCLUDE,
   // a lemma generated while constructing a candidate solution for PBE
   QUANTIFIERS_SYGUS_PBE_CONSTRUCT_SOL,
+  // complete enumeration lemma
+  QUANTIFIERS_SYGUS_COMPLETE_ENUM,
   //-------------------- dynamic splitting
   // a dynamic split from quantifiers
   QUANTIFIERS_DSPLIT,
@@ -453,8 +467,6 @@ enum class InferenceId
   SEP_LABEL_DEF,
   // lemma for sep.emp
   SEP_EMP,
-  // lemma for positive labelled PTO
-  SEP_POS_PTO_SINGLETON,
   // positive reduction for sep constraint
   SEP_POS_REDUCTION,
   // negative reduction for sep constraint
@@ -476,6 +488,7 @@ enum class InferenceId
   // ---------------------------------- sets theory
   //-------------------- sets core solver
   // split when computing care graph
+  SETS_SKOLEM,
   SETS_CG_SPLIT,
   SETS_COMPREHENSION,
   SETS_DEQ,
@@ -484,6 +497,11 @@ enum class InferenceId
   SETS_EQ_CONFLICT,
   SETS_EQ_MEM,
   SETS_EQ_MEM_CONFLICT,
+  SETS_FILTER_DOWN,
+  SETS_FILTER_UP,
+  SETS_FOLD,
+  SETS_MAP_DOWN_POSITIVE,
+  SETS_MAP_UP,
   SETS_MEM_EQ,
   SETS_MEM_EQ_CONFLICT,
   SETS_PROXY,
@@ -531,6 +549,13 @@ enum class InferenceId
   SETS_RELS_TRANSPOSE_EQ,
   SETS_RELS_TRANSPOSE_REV,
   SETS_RELS_TUPLE_REDUCTION,
+  SETS_RELS_GROUP_NOT_EMPTY,
+  SETS_RELS_GROUP_UP1,
+  SETS_RELS_GROUP_UP2,
+  SETS_RELS_GROUP_DOWN,
+  SETS_RELS_GROUP_PART_MEMBER,
+  SETS_RELS_GROUP_SAME_PROJECTION,
+  SETS_RELS_GROUP_SAME_PART,
   //-------------------------------------- end sets theory
 
   //-------------------------------------- strings theory
@@ -555,6 +580,11 @@ enum class InferenceId
   // equal after e.g. removing strings that are currently empty. For example:
   //   y = "" ^ z = "" => x ++ y = z ++ x
   STRINGS_I_NORM,
+  // split between the argument of two equated str.unit terms
+  STRINGS_UNIT_SPLIT,
+  // a code point must be out of bounds due to (str.unit x) = (str.unit y) and
+  // x != y.
+  STRINGS_UNIT_INJ_OOB,
   // injectivity of seq.unit
   // (seq.unit x) = (seq.unit y) => x=y, or
   // (seq.unit x) = (seq.unit c) => x=c
@@ -899,6 +929,9 @@ enum class InferenceId
   UF_HO_LAMBDA_APP_REDUCE,
   //-------------------- end model-construction specific part
   //-------------------- end HO extension to UF
+  //-------------------- UF arith/bv conversions solver
+  // reductions of an arithmetic/bit-vector conversion term
+  UF_ARITH_BV_CONV_REDUCTION,
   //-------------------------------------- end uf theory
 
   //-------------------------------------- unknown

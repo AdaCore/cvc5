@@ -27,8 +27,6 @@
 #include "prop/prop_engine.h"
 #include "prop/theory_proxy.h"
 #include "smt/env.h"
-#include "smt/smt_statistics_registry.h"
-#include "smt/solver_engine_scope.h"
 #include "theory/theory.h"
 #include "theory/theory_engine.h"
 
@@ -51,7 +49,7 @@ CnfStream::CnfStream(Env& env,
       d_registrar(registrar),
       d_name(name),
       d_removable(false),
-      d_stats(name)
+      d_stats(statisticsRegistry(), name)
 {
 }
 
@@ -220,10 +218,9 @@ const CnfStream::LiteralToNodeMap& CnfStream::getNodeCache() const
 }
 
 void CnfStream::getBooleanVariables(std::vector<TNode>& outputVariables) const {
-  context::CDList<TNode>::const_iterator it, it_end;
-  for (it = d_booleanVariables.begin(); it != d_booleanVariables.end(); ++ it) {
-    outputVariables.push_back(*it);
-  }
+  outputVariables.insert(outputVariables.end(),
+                         d_booleanVariables.begin(),
+                         d_booleanVariables.end());
 }
 
 bool CnfStream::isNotifyFormula(TNode node) const
@@ -692,10 +689,7 @@ void CnfStream::convertAndAssertIte(TNode node, bool negated)
 // At the top level we must ensure that all clauses that are asserted are
 // not unit, except for the direct assertions. This allows us to remove the
 // clauses later when they are not needed anymore (lemmas for example).
-void CnfStream::convertAndAssert(TNode node,
-                                 bool removable,
-                                 bool negated,
-                                 bool input)
+void CnfStream::convertAndAssert(TNode node, bool removable, bool negated)
 {
   Trace("cnf") << "convertAndAssert(" << node
                << ", negated = " << (negated ? "true" : "false")
@@ -740,9 +734,10 @@ void CnfStream::convertAndAssert(TNode node, bool negated)
   }
 }
 
-CnfStream::Statistics::Statistics(const std::string& name)
-    : d_cnfConversionTime(smtStatisticsRegistry().registerTimer(
-        name + "::CnfStream::cnfConversionTime"))
+CnfStream::Statistics::Statistics(StatisticsRegistry& sr,
+                                  const std::string& name)
+    : d_cnfConversionTime(
+        sr.registerTimer(name + "::CnfStream::cnfConversionTime"))
 {
 }
 

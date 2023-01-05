@@ -44,7 +44,9 @@ class EngineOutputChannel : public theory::OutputChannel
   friend class internal::TheoryEngine;
 
  public:
-  EngineOutputChannel(TheoryEngine* engine, theory::TheoryId theory);
+  EngineOutputChannel(StatisticsRegistry& sr,
+                      TheoryEngine* engine,
+                      theory::TheoryId theory);
 
   void safePoint(Resource r) override;
 
@@ -55,7 +57,9 @@ class EngineOutputChannel : public theory::OutputChannel
 
   void requirePhase(TNode n, bool phase) override;
 
-  void setIncomplete(IncompleteId id) override;
+  void setModelUnsound(IncompleteId id) override;
+
+  void setRefutationUnsound(IncompleteId id) override;
 
   void spendResource(Resource r) override;
 
@@ -82,7 +86,7 @@ class EngineOutputChannel : public theory::OutputChannel
   class Statistics
   {
    public:
-    Statistics(theory::TheoryId theory);
+    Statistics(StatisticsRegistry& sr, theory::TheoryId theory);
     /** Number of calls to conflict, propagate, lemma, requirePhase */
     IntStat conflicts, propagations, lemmas, requirePhase, trustedConflicts,
         trustedLemmas;

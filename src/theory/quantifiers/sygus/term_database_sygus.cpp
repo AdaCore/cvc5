@@ -54,7 +54,7 @@ std::ostream& operator<<(std::ostream& os, EnumeratorRole r)
 TermDbSygus::TermDbSygus(Env& env, QuantifiersState& qs, OracleChecker* oc)
     : EnvObj(env),
       d_qstate(qs),
-      d_syexp(new SygusExplain(this)),
+      d_syexp(new SygusExplain(env, this)),
       d_funDefEval(new FunDefEvaluator(env)),
       d_eval_unfold(new SygusEvalUnfold(env, this)),
       d_ochecker(oc)
@@ -409,6 +409,9 @@ void TermDbSygus::registerEnumerator(Node e,
   SygusTypeInfo& eti = getTypeInfo(et);
   std::vector<TypeNode> sf_types;
   eti.getSubfieldTypes(sf_types);
+  bool sharedSel = options().datatypes.dtSharedSelectors;
+  // whether this enumerator relies on any-constant constructors
+  bool usingAnyConst = false;
   // for each type of subfield type of this enumerator
   for (unsigned i = 0, ntypes = sf_types.size(); i < ntypes; i++)
   {
@@ -418,17 +421,21 @@ void TermDbSygus::registerEnumerator(Node e,
     SygusTypeInfo& sti = getTypeInfo(stn);
     const DType& dt = stn.getDType();
     int anyC = sti.getAnyConstantConsNum();
-    for (unsigned j = 0, ncons = dt.getNumConstructors(); j < ncons; j++)
+    if (anyC != -1)
     {
-      bool isAnyC = static_cast<int>(j) == anyC;
-      if (anyC != -1 && !isAnyC)
+      usingAnyConst = true;
+      for (unsigned j = 0, ncons = dt.getNumConstructors(); j < ncons; j++)
       {
-        // if we are using the any constant constructor, do not use any
-        // concrete constant
-        Node c_op = sti.getConsNumConst(j);
-        if (!c_op.isNull())
+        bool isAnyC = static_cast<int>(j) == anyC;
+        if (!isAnyC)
         {
-          rm_indices.push_back(j);
+          // if we are using the any constant constructor, do not use any
+          // concrete constant
+          Node c_op = sti.getConsNumConst(j);
+          if (!c_op.isNull())
+          {
+            rm_indices.push_back(j);
+          }
         }
       }
     }
@@ -440,7 +447,7 @@ void TermDbSygus::registerEnumerator(Node e,
       // is necessary to generate a term of the form any_constant( x.0 ) for a
       // fresh variable x.0.
       Node fv = getFreeVar(stn, 0);
-      Node exc_val = datatypes::utils::getInstCons(fv, dt, rindex);
+      Node exc_val = datatypes::utils::getInstCons(fv, dt, rindex, sharedSel);
       // should not include the constuctor in any subterm
       Node x = getFreeVar(stn, 0);
       Trace("sygus-db") << "Construct symmetry breaking lemma from " << x
@@ -538,6 +545,19 @@ void TermDbSygus::registerEnumerator(Node e,
       d_enum_var_agnostic[e] = false;
       isActiveGen = false;
     }
+  }
+  // When we are using smart enumeration, we often do not consider model
+  // values for arguments of any-constant constructors (in sygus_explain.cpp),
+  // hence those blocking lemmas are refutation unsound. For simplicity, we
+  // mark unsound once and for all at the beginning, meaning we do not
+  // answer "infeasible" when using smart enuemration + any-constant
+  // constructors. Using --sygus-repair-const on the other hand avoids this
+  // incompleteness, which is checked here.
+  if (!isActiveGen && usingAnyConst && !options().quantifiers.sygusRepairConst)
+  {
+    Assert(d_qim != nullptr);
+    d_qim->setRefutationUnsound(
+        IncompleteId::QUANTIFIERS_SYGUS_SMART_BLOCK_ANY_CONSTANT);
   }
   d_enum_active_gen[e] = isActiveGen;
   d_enum_basic[e] = isActiveGen && !isVarAgnostic;
@@ -792,12 +812,13 @@ unsigned TermDbSygus::getSelectorWeight(TypeNode tn, Node sel)
     const DType& dt = tn.getDType();
     Trace("sygus-db") << "Compute selector weights for " << dt.getName()
                       << std::endl;
+    bool sharedSel = options().datatypes.dtSharedSelectors;
     for (unsigned i = 0, size = dt.getNumConstructors(); i < size; i++)
     {
       unsigned cw = dt[i].getWeight();
-      for (unsigned j = 0, size2 = dt[i].getNumArgs(); j < size2; j++)
+      for (size_t j = 0, size2 = dt[i].getNumArgs(); j < size2; j++)
       {
-        Node csel = dt[i].getSelectorInternal(tn, j);
+        Node csel = datatypes::utils::getSelector(tn, dt[i], j, sharedSel);
         std::map<Node, unsigned>::iterator its = itsw->second.find(csel);
         if (its == itsw->second.end() || cw < its->second)
         {

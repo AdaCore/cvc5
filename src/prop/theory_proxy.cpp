@@ -19,17 +19,19 @@
 
 #include "context/context.h"
 #include "decision/decision_engine.h"
+#include "decision/justification_strategy.h"
 #include "expr/node_algorithm.h"
 #include "options/base_options.h"
 #include "options/decision_options.h"
 #include "options/parallel_options.h"
+#include "options/prop_options.h"
 #include "options/smt_options.h"
 #include "prop/cnf_stream.h"
+#include "prop/proof_cnf_stream.h"
 #include "prop/prop_engine.h"
 #include "prop/skolem_def_manager.h"
 #include "prop/zero_level_learner.h"
 #include "smt/env.h"
-#include "smt/smt_statistics_registry.h"
 #include "theory/rewriter.h"
 #include "theory/theory_engine.h"
 #include "util/statistics_stats.h"
@@ -40,13 +42,12 @@ namespace prop {
 TheoryProxy::TheoryProxy(Env& env,
                          PropEngine* propEngine,
                          TheoryEngine* theoryEngine,
-                         decision::DecisionEngine* decisionEngine,
                          SkolemDefManager* skdm)
     : EnvObj(env),
       d_propEngine(propEngine),
       d_cnfStream(nullptr),
-      d_decisionEngine(decisionEngine),
-      d_dmNeedsActiveDefs(d_decisionEngine->needsActiveSkolemDefs()),
+      d_decisionEngine(nullptr),
+      d_trackActiveSkDefs(false),
       d_theoryEngine(theoryEngine),
       d_queue(context()),
       d_tpp(env, *theoryEngine),
@@ -69,7 +70,24 @@ TheoryProxy::~TheoryProxy() {
   /* nothing to do for now */
 }
 
-void TheoryProxy::finishInit(CnfStream* cnfStream) { d_cnfStream = cnfStream; }
+void TheoryProxy::finishInit(CDCLTSatSolverInterface* ss, CnfStream* cs)
+{
+  // make the decision engine, which requires pointers to the SAT solver and CNF
+  // stream
+  options::DecisionMode dmode = options().decision.decisionMode;
+  if (dmode == options::DecisionMode::JUSTIFICATION
+      || dmode == options::DecisionMode::STOPONLY)
+  {
+    d_decisionEngine.reset(new decision::JustificationStrategy(d_env, ss, cs));
+  }
+  else
+  {
+    d_decisionEngine.reset(new decision::DecisionEngineEmpty(d_env));
+  }
+  // compute if we need to track skolem definitions
+  d_trackActiveSkDefs = d_decisionEngine->needsActiveSkolemDefs();
+  d_cnfStream = cs;
+}
 
 void TheoryProxy::presolve()
 {
@@ -108,6 +126,10 @@ void TheoryProxy::notifyInputFormulas(
     {
       skolem = it->second;
     }
+    if (!skolem.isNull())
+    {
+      notifySkolemDefinition(assertions[i], skolem);
+    }
     notifyAssertion(assertions[i], skolem, false);
   }
 
@@ -119,21 +141,20 @@ void TheoryProxy::notifyInputFormulas(
   }
 }
 
+void TheoryProxy::notifySkolemDefinition(Node a, TNode skolem)
+{
+  Assert(!skolem.isNull());
+  d_skdm->notifySkolemDefinition(skolem, a);
+}
+
 void TheoryProxy::notifyAssertion(Node a, TNode skolem, bool isLemma)
 {
-  if (skolem.isNull())
-  {
-    d_decisionEngine->addAssertion(a, isLemma);
-  }
-  else
-  {
-    d_skdm->notifySkolemDefinition(skolem, a);
-    d_decisionEngine->addSkolemDefinition(a, skolem, isLemma);
-  }
+  // notify the decision engine
+  d_decisionEngine->addAssertion(a, skolem, isLemma);
 }
 
 void TheoryProxy::variableNotify(SatVariable var) {
-  d_theoryEngine->preRegister(getNode(SatLiteral(var)));
+  preRegister(getNode(SatLiteral(var)));
 }
 
 void TheoryProxy::theoryCheck(theory::Theory::Effort effort) {
@@ -155,7 +176,7 @@ void TheoryProxy::theoryCheck(theory::Theory::Effort effort) {
     }
     // now, assert to theory engine
     d_theoryEngine->assertFact(assertion);
-    if (d_dmNeedsActiveDefs)
+    if (d_trackActiveSkDefs)
     {
       Assert(d_skdm != nullptr);
       Trace("sat-rlv-assert")
@@ -275,9 +296,28 @@ bool TheoryProxy::theoryNeedCheck() const {
   return d_theoryEngine->needCheck();
 }
 
-bool TheoryProxy::isIncomplete() const
+bool TheoryProxy::isModelUnsound() const
 {
-  return d_stopSearch.get() || d_theoryEngine->isIncomplete();
+  return d_stopSearch.get() || d_theoryEngine->isModelUnsound();
+}
+
+bool TheoryProxy::isRefutationUnsound() const
+{
+  return d_theoryEngine->isRefutationUnsound();
+}
+
+theory::IncompleteId TheoryProxy::getModelUnsoundId() const
+{
+  if (d_stopSearch.get())
+  {
+    return theory::IncompleteId::STOP_SEARCH;
+  }
+  return d_theoryEngine->getModelUnsoundId();
+}
+
+theory::IncompleteId TheoryProxy::getRefutationUnsoundId() const
+{
+  return d_theoryEngine->getRefutationUnsoundId();
 }
 
 TNode TheoryProxy::getNode(SatLiteral lit) {
@@ -356,7 +396,7 @@ modes::LearnedLitType TheoryProxy::getLiteralType(const Node& lit) const
   {
     return d_zll->computeLearnedLiteralType(lit);
   }
-  return modes::LearnedLitType::UNKNOWN;
+  return modes::LEARNED_LIT_UNKNOWN;
 }
 
 std::vector<Node> TheoryProxy::getLearnedZeroLevelLiteralsForRestart() const

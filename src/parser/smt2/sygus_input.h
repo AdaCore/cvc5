@@ -24,19 +24,14 @@
 #include "parser/smt2/Smt2Lexer.h"
 #include "parser/smt2/Smt2Parser.h"
 
-// extern void Smt2ParserSetAntlrParser(cvc5::parser::AntlrParser*
-// newAntlrParser);
-
-namespace cvc5 {
+namespace cvc5::parser {
 
 class Command;
-class Expr;
-class ExprManager;
-
-namespace parser {
-
 class Smt2;
 
+/*
+ * This class is deprecated and used only for the ANTLR parser.
+ */
 class SygusInput : public AntlrInput {
   typedef AntlrInput super;
 
@@ -82,7 +77,6 @@ class SygusInput : public AntlrInput {
 
 };/* class SygusInput */
 
-}  // namespace parser
-}  // namespace cvc5
+}  // namespace cvc5::parser
 
 #endif /* CVC5__PARSER__SYGUS_INPUT_H */

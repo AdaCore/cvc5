@@ -18,7 +18,7 @@
 #include "expr/bound_var_manager.h"
 #include "expr/emptybag.h"
 #include "expr/skolem_manager.h"
-#include "table_project_op.h"
+#include "theory/datatypes/project_op.h"
 #include "theory/datatypes/tuple_utils.h"
 #include "theory/quantifiers/fmf/bounded_integers.h"
 #include "util/rational.h"
@@ -211,32 +211,34 @@ Node BagReduction::reduceAggregateOperator(Node node)
   TypeNode elementType = function.getType().getArgTypes()[0];
   Node initialValue = node[1];
   Node A = node[2];
-  const std::vector<uint32_t>& indices =
-      node.getOperator().getConst<TableAggregateOp>().getIndices();
+  ProjectOp op = node.getOperator().getConst<ProjectOp>();
 
-  Node t1 = bvm->mkBoundVar<FirstIndexVarAttribute>(node, "t1", elementType);
-  Node t2 = bvm->mkBoundVar<SecondIndexVarAttribute>(node, "t2", elementType);
-  Node list = nm->mkNode(BOUND_VAR_LIST, t1, t2);
-  Node body = nm->mkConst(true);
-  for (uint32_t i : indices)
-  {
-    Node select1 = datatypes::TupleUtils::nthElementOfTuple(t1, i);
-    Node select2 = datatypes::TupleUtils::nthElementOfTuple(t2, i);
-    Node equal = select1.eqNode(select2);
-    body = body.andNode(equal);
-  }
-
-  Node lambda = nm->mkNode(LAMBDA, list, body);
-  Node partition = nm->mkNode(BAG_PARTITION, lambda, A);
+  Node groupOp = nm->mkConst(TABLE_GROUP_OP, op);
+  Node group = nm->mkNode(TABLE_GROUP, {groupOp, A});
 
   Node bag = bvm->mkBoundVar<FirstIndexVarAttribute>(
-      partition, "bag", nm->mkBagType(elementType));
+      group, "bag", nm->mkBagType(elementType));
   Node foldList = nm->mkNode(BOUND_VAR_LIST, bag);
   Node foldBody = nm->mkNode(BAG_FOLD, function, initialValue, bag);
 
   Node fold = nm->mkNode(LAMBDA, foldList, foldBody);
-  Node map = nm->mkNode(BAG_MAP, fold, partition);
+  Node map = nm->mkNode(BAG_MAP, fold, group);
   return map;
+}
+
+Node BagReduction::reduceProjectOperator(Node n)
+{
+  Assert(n.getKind() == TABLE_PROJECT);
+  NodeManager* nm = NodeManager::currentNM();
+  Node A = n[0];
+  TypeNode elementType = A.getType().getBagElementType();
+  ProjectOp projectOp = n.getOperator().getConst<ProjectOp>();
+  Node op = nm->mkConst(TUPLE_PROJECT_OP, projectOp);
+  Node t = nm->mkBoundVar("t", elementType);
+  Node projection = nm->mkNode(TUPLE_PROJECT, op, t);
+  Node lambda = nm->mkNode(LAMBDA, nm->mkNode(BOUND_VAR_LIST, t), projection);
+  Node setMap = nm->mkNode(BAG_MAP, lambda, A);
+  return setMap;
 }
 
 }  // namespace bags
