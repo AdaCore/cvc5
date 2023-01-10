@@ -17,10 +17,10 @@
 
 include(deps-helper)
 
-find_path(GMP_INCLUDE_DIR NAMES gmp.h)
-find_path(GMPXX_INCLUDE_DIR NAMES gmpxx.h)
-find_library(GMP_LIBRARIES NAMES gmp)
-find_library(GMPXX_LIBRARIES NAMES gmpxx)
+find_path(GMP_INCLUDE_DIR NAMES gmp.h NO_CMAKE_FIND_ROOT_PATH)
+find_path(GMPXX_INCLUDE_DIR NAMES gmpxx.h NO_CMAKE_FIND_ROOT_PATH)
+find_library(GMP_LIBRARIES NAMES gmp NO_CMAKE_FIND_ROOT_PATH)
+find_library(GMPXX_LIBRARIES NAMES gmpxx NO_CMAKE_FIND_ROOT_PATH)
 
 set(GMP_FOUND_SYSTEM FALSE)
 if(GMP_INCLUDE_DIR AND GMPXX_INCLUDE_DIR AND GMP_LIBRARIES AND GMPXX_LIBRARIES)
@@ -38,7 +38,6 @@ if(GMP_INCLUDE_DIR AND GMPXX_INCLUDE_DIR AND GMP_LIBRARIES AND GMPXX_LIBRARIES)
   getversionpart(MAJOR "${GMP_INCLUDE_DIR}/gmp.h" "VERSION")
   getversionpart(MINOR "${GMP_INCLUDE_DIR}/gmp.h" "VERSION_MINOR")
   getversionpart(PATCH "${GMP_INCLUDE_DIR}/gmp.h" "VERSION_PATCHLEVEL")
-
   if(MAJOR AND MINOR AND PATCH)
     set(GMP_VERSION
         "${MAJOR}.${MINOR}.${PATCH}"
@@ -47,19 +46,6 @@ if(GMP_INCLUDE_DIR AND GMPXX_INCLUDE_DIR AND GMP_LIBRARIES AND GMPXX_LIBRARIES)
     set(GMP_VERSION "(unknown version)")
   endif()
 
-  # This test checks whether GMP is usable and whether the version is new
-  # enough
-  try_compile(GMP_USABLE "${DEPS_BASE}/try_compile/GMP-EP"
-    "${CMAKE_CURRENT_LIST_DIR}/deps-utils/gmp-test.cpp"
-    CMAKE_FLAGS
-      "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
-      "-DINCLUDE_DIRECTORIES=${GMP_INCLUDE_DIR}"
-    LINK_LIBRARIES ${GMP_LIBRARIES} ${GMPXX_LIBRARIES}
-  )
-  if(NOT GMP_USABLE)
-    message(VERBOSE "System version for GMP does not work in the selected configuration. Maybe we are cross-compiling?")
-    set(GMP_FOUND_SYSTEM FALSE)
-  endif()
 endif()
 
 if(NOT GMP_FOUND_SYSTEM)
