@@ -13,7 +13,10 @@
  * The cvc5 Java API.
  */
 
-#include "api/cpp/cvc5.h"
+#include <cstdint>
+
+#include <cvc5/cvc5.h>
+
 #include "api_utilities.h"
 #include "io_github_cvc5_Term.h"
 
@@ -643,6 +646,35 @@ JNIEXPORT jstring JNICALL Java_io_github_cvc5_Term_getBitVectorValue(
   Term* current = reinterpret_cast<Term*>(pointer);
   std::string ret =
       current->getBitVectorValue(static_cast<std::uint32_t>(base));
+  return env->NewStringUTF(ret.c_str());
+  CVC5_JAVA_API_TRY_CATCH_END_RETURN(env, nullptr);
+}
+
+/*
+ * Class:     io_github_cvc5_Term
+ * Method:    isFiniteFieldValue
+ * Signature: (J)Z
+ */
+JNIEXPORT jboolean JNICALL
+Java_io_github_cvc5_Term_isFiniteFieldValue(JNIEnv* env, jobject, jlong pointer)
+{
+  CVC5_JAVA_API_TRY_CATCH_BEGIN;
+  Term* current = reinterpret_cast<Term*>(pointer);
+  return static_cast<jboolean>(current->isFiniteFieldValue());
+  CVC5_JAVA_API_TRY_CATCH_END_RETURN(env, static_cast<jboolean>(false));
+}
+
+/*
+ * Class:     io_github_cvc5_Term
+ * Method:    getFiniteFieldValue
+ * Signature: (J)Ljava/lang/String;
+ */
+JNIEXPORT jstring JNICALL Java_io_github_cvc5_Term_getFiniteFieldValue(
+    JNIEnv* env, jobject, jlong pointer)
+{
+  CVC5_JAVA_API_TRY_CATCH_BEGIN;
+  Term* current = reinterpret_cast<Term*>(pointer);
+  std::string ret = current->getFiniteFieldValue();
   return env->NewStringUTF(ret.c_str());
   CVC5_JAVA_API_TRY_CATCH_END_RETURN(env, nullptr);
 }

@@ -19,10 +19,12 @@
 #ifndef CVC5__PARSER__TPTP_H
 #define CVC5__PARSER__TPTP_H
 
+#include <cvc5/cvc5.h>
+
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 
-#include "api/cpp/cvc5.h"
 #include "parser/parse_op.h"
 #include "parser/parser.h"
 #include "util/hash.h"
@@ -35,12 +37,11 @@ namespace parser {
 
 class Command;
 
-/*
- * This class is deprecated and used only for the ANTLR parser.
+/**
+ * The state information when parsing TPTP inputs.
  */
-class Tptp : public Parser {
- private:
-  friend class ParserBuilder;
+class TptpState : public ParserState
+{
  public:
   bool cnf() const { return d_cnf; }
   void setCnf(bool cnf) { d_cnf = cnf; }
@@ -89,13 +90,12 @@ class Tptp : public Parser {
 
   bool hasConjecture() const { return d_hasConjecture; }
 
- protected:
-  Tptp(cvc5::Solver* solver,
-       SymbolManager* sm,
-       bool strictMode = false);
+  TptpState(ParserStateCallback* psc,
+            Solver* solver,
+            SymbolManager* sm,
+            bool strictMode = false);
 
- public:
-  ~Tptp();
+  ~TptpState();
   /**
    * Add theory symbols to the parser state.
    *
@@ -132,7 +132,9 @@ class Tptp : public Parser {
    * getAssertionExpr above). This may set a flag in the parser to mark
    * that we have asserted a conjecture.
    */
-  Command* makeAssertCommand(FormulaRole fr, cvc5::Term expr, bool cnf);
+  std::unique_ptr<Command> makeAssertCommand(FormulaRole fr,
+                                             cvc5::Term expr,
+                                             bool cnf);
 
   /** Ugly hack because I don't know how to return an expression from a
       token */
@@ -218,32 +220,7 @@ class Tptp : public Parser {
   bool d_cnf; // in a cnf formula
   bool d_fof; // in an fof formula
   bool d_hol;  // in a thf formula
-};/* class Tptp */
-
-
-namespace tptp {
-/**
- * Just exists to provide the uintptr_t constructor that ANTLR
- * requires.
- */
-struct myExpr : public cvc5::Term
-{
-  myExpr() : cvc5::Term() {}
-  myExpr(void*) : cvc5::Term() {}
-  myExpr(const cvc5::Term& e) : cvc5::Term(e) {}
-  myExpr(const myExpr& e) : cvc5::Term(e) {}
-}; /* struct myExpr*/
-
-enum NonAssoc {
-  NA_IFF,
-  NA_IMPLIES,
-  NA_REVIMPLIES,
-  NA_REVIFF,
-  NA_REVOR,
-  NA_REVAND,
-};
-
-}  // namespace tptp
+};             /* class Tptp */
 
 }  // namespace parser
 }  // namespace cvc5

@@ -16,15 +16,16 @@
 // This must be included first.
 #include "parser/parser_builder.h"
 
+#include <cvc5/cvc5.h>
+
 #include <string>
 
-#include "api/cpp/cvc5.h"
 #include "base/check.h"
 #include "parser/antlr_input.h"
 #include "parser/input.h"
-#include "parser/parser.h"
-#include "smt2/smt2.h"
-#include "tptp/tptp.h"
+#include "parser/parser_antlr.h"
+#include "smt2/smt2_antlr.h"
+#include "tptp/tptp_antlr.h"
 
 namespace cvc5 {
 namespace parser {

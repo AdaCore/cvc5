@@ -13,6 +13,7 @@
  * Driver for cvc5 executable (cvc5).
  */
 
+#include <cvc5/cvc5.h>
 #include <stdio.h>
 #include <unistd.h>
 
@@ -24,7 +25,6 @@
 #include <new>
 #include <optional>
 
-#include "api/cpp/cvc5.h"
 #include "base/configuration.h"
 #include "base/cvc5config.h"
 #include "base/output.h"
@@ -36,7 +36,7 @@
 #include "main/signal_handlers.h"
 #include "main/time_limit.h"
 #include "parser/api/cpp/command.h"
-#include "parser/input_parser.h"
+#include "parser/api/cpp/input_parser.h"
 #include "smt/solver_engine.h"
 #include "util/result.h"
 
@@ -167,13 +167,8 @@ int runCvc5(int argc, char* argv[], std::unique_ptr<cvc5::Solver>& solver)
     solver->setInfo("filename", filenameStr);
 
     // Parse and execute commands until we are done
-    bool status = true;
     if (solver->getOptionInfo("interactive").boolValue() && inputFromStdin)
     {
-      if (!solver->getOptionInfo("incremental").setByUser)
-      {
-        solver->setOption("incremental", "true");
-      }
       // We use the interactive shell when piping from stdin, even some cases
       // where the input stream is not a TTY. We do this to avoid memory issues
       // involving tokens that span multiple lines.
@@ -181,11 +176,13 @@ int runCvc5(int argc, char* argv[], std::unique_ptr<cvc5::Solver>& solver)
       // (via isatty). If we are not interactive, we disable certain output
       // information, e.g. for querying the user.
       bool isInteractive = isatty(fileno(stdin));
-      InteractiveShell shell(pExecutor->getSolver(),
-                             pExecutor->getSymbolManager(),
-                             dopts.in(),
-                             dopts.out(),
-                             isInteractive);
+      // set incremental if we are in interactive mode
+      if (!solver->getOptionInfo("incremental").setByUser)
+      {
+        solver->setOption("incremental", isInteractive ? "true" : "false");
+      }
+      InteractiveShell shell(
+          pExecutor.get(), dopts.in(), dopts.out(), isInteractive);
 
       if (isInteractive)
       {
@@ -202,22 +199,12 @@ int runCvc5(int argc, char* argv[], std::unique_ptr<cvc5::Solver>& solver)
             << Configuration::copyright() << std::endl;
       }
 
-      bool quit = false;
-      while (!quit)
+      while (true)
       {
-        std::optional<InteractiveShell::CmdSeq> cmds = shell.readCommand();
-        if (!cmds)
+        // read and execute all available commands
+        if (!shell.readAndExecCommands())
         {
           break;
-        }
-        for (std::unique_ptr<cvc5::parser::Command>& cmd : *cmds)
-        {
-          status = pExecutor->doCommand(cmd) && status;
-          if (cmd->interrupted())
-          {
-            quit = true;
-            break;
-          }
         }
       }
     }
@@ -235,7 +222,7 @@ int runCvc5(int argc, char* argv[], std::unique_ptr<cvc5::Solver>& solver)
       }
 
       std::unique_ptr<InputParser> parser(new InputParser(
-              pExecutor->getSolver(), pExecutor->getSymbolManager(), true));
+          pExecutor->getSolver(), pExecutor->getSymbolManager()));
       if( inputFromStdin ) {
         parser->setStreamInput(
             solver->getOption("input-language"), cin, filename);

@@ -15,13 +15,14 @@
 
 #include "printer/smt2/smt2_printer.h"
 
+#include <cvc5/cvc5.h>
+
 #include <iostream>
 #include <list>
 #include <string>
 #include <typeinfo>
 #include <vector>
 
-#include "api/cpp/cvc5.h"
 #include "expr/array_store_all.h"
 #include "expr/ascription_type.h"
 #include "expr/cardinality_constraint.h"
@@ -38,13 +39,16 @@
 #include "printer/let_binding.h"
 #include "proof/unsat_core.h"
 #include "theory/arrays/theory_arrays_rewriter.h"
+#include "theory/builtin/abstract_type.h"
 #include "theory/datatypes/project_op.h"
 #include "theory/datatypes/sygus_datatype_utils.h"
 #include "theory/quantifiers/quantifiers_attributes.h"
 #include "theory/theory_model.h"
 #include "theory/uf/function_const.h"
+#include "theory/uf/theory_uf_rewriter.h"
 #include "util/bitvector.h"
 #include "util/divisible.h"
+#include "util/finite_field_value.h"
 #include "util/floatingpoint.h"
 #include "util/iand.h"
 #include "util/indexed_root_predicate.h"
@@ -196,8 +200,24 @@ void Smt2Printer::toStream(std::ostream& out,
         n.constToStream(out);
       }
       break;
+    case kind::ABSTRACT_TYPE:
+    {
+      const AbstractType& at = n.getConst<AbstractType>();
+      Kind atk = at.getKind();
+      out << "?";
+      // note that the fully abstract type (where atk is ABSTRACT_TYPE) is
+      // printed simply as "?", not, e.g., "?Abstract"
+      if (atk != kind::ABSTRACT_TYPE)
+      {
+        out << smtKindString(atk);
+      }
+      break;
+    }
     case kind::BITVECTOR_TYPE:
       out << "(_ BitVec " << n.getConst<BitVectorSize>().d_size << ")";
+      break;
+    case kind::FINITE_FIELD_TYPE:
+      out << "(_ FiniteField " << n.getConst<FfSize>().d_size << ")";
       break;
     case kind::FLOATINGPOINT_TYPE:
       out << "(_ FloatingPoint "
@@ -215,6 +235,12 @@ void Smt2Printer::toStream(std::ostream& out,
       {
         out << "#b" << bv.toString();
       }
+      break;
+    }
+    case kind::CONST_FINITE_FIELD:
+    {
+      const FiniteFieldValue& ff = n.getConst<FiniteFieldValue>();
+      out << "#f" << ff.getValue() << "m" << ff.getFieldSize();
       break;
     }
     case kind::CONST_FLOATINGPOINT:
@@ -516,7 +542,7 @@ void Smt2Printer::toStream(std::ostream& out,
     return;
   }
 
-  if (n.getKind() == kind::SKOLEM && nm->getSkolemManager()->isAbstractValue(n))
+  if (k == kind::SKOLEM && nm->getSkolemManager()->isAbstractValue(n))
   {
     // abstract value
     std::string s = n.getName();
@@ -529,7 +555,7 @@ void Smt2Printer::toStream(std::ostream& out,
     if (n.hasName())
     {
       std::string s = n.getName();
-      if (n.getKind() == kind::RAW_SYMBOL)
+      if (k == kind::RAW_SYMBOL)
       {
         // raw symbols are never quoted
         out << s;
@@ -541,16 +567,24 @@ void Smt2Printer::toStream(std::ostream& out,
     }
     else
     {
-      if (n.getKind() == kind::VARIABLE)
+      if (k == kind::VARIABLE)
       {
         out << "var_";
       }
       else
       {
-        out << n.getKind() << '_';
+        out << k << '_';
       }
       out << n.getId();
     }
+    return;
+  }
+  if (k == kind::APPLY_UF && !n.getOperator().isVar())
+  {
+    // Must print as HO apply instead. This ensures un-beta-reduced function
+    // applications can be reparsed.
+    Node hoa = theory::uf::TheoryUfRewriter::getHoApplyForApplyUf(n);
+    toStream(out, hoa, toDepth);
     return;
   }
 
@@ -621,15 +655,44 @@ void Smt2Printer::toStream(std::ostream& out,
       out << "))";
       return;
     case kind::MATCH_BIND_CASE:
-      // ignore the binder
-      toStream(out, n[1], toDepth, lbind);
-      out << " ";
-      toStream(out, n[2], toDepth, lbind);
-      out << ")";
-      return;
     case kind::MATCH_CASE:
-      // do nothing
-      break;
+    {
+      // ignore the binder for MATCH_BIND_CASE
+      size_t patIndex = (k == kind::MATCH_BIND_CASE ? 1 : 0);
+      // The pattern should be printed as a pattern (symbol applied to symbols),
+      // not as a term. In particular, this means we should not print any
+      // type ascriptions (if any).
+      if (n[patIndex].getKind() == kind::APPLY_CONSTRUCTOR)
+      {
+        if (n[patIndex].getNumChildren() > 0)
+        {
+          out << "(";
+        }
+        Node op = n[patIndex].getOperator();
+        const DType& dt = DType::datatypeOf(op);
+        size_t index = DType::indexOf(op);
+        out << dt[index].getConstructor();
+        for (const Node& nc : n[patIndex])
+        {
+          out << " ";
+          toStream(out, nc, toDepth, lbind);
+        }
+        if (n[patIndex].getNumChildren() > 0)
+        {
+          out << ")";
+        }
+      }
+      else
+      {
+        // otherwise, a variable, just print
+        Assert(n[patIndex].isVar());
+        toStream(out, n[patIndex], toDepth, lbind);
+      }
+      out << " ";
+      toStream(out, n[patIndex + 1], toDepth, lbind);
+      out << ")";
+    }
+      return;
 
     // arith theory
     case kind::IAND:
@@ -947,26 +1010,24 @@ void Smt2Printer::toStream(std::ostream& out,
     // do not letify the bound variable list
     toStream(out, n[0], toDepth, nullptr);
     out << " ";
+    bool needsPrintAnnot = false;
     std::stringstream annot;
     if (n.getNumChildren() == 3)
     {
-      annot << " ";
       for (const Node& nc : n[2])
       {
         Kind nck = nc.getKind();
         if (nck == kind::INST_PATTERN)
         {
-          out << "(! ";
-          annot << ":pattern ";
+          needsPrintAnnot = true;
+          annot << " :pattern ";
           toStream(annot, nc, toDepth, nullptr);
-          annot << ") ";
         }
         else if (nck == kind::INST_NO_PATTERN)
         {
-          out << "(! ";
-          annot << ":no-pattern ";
+          needsPrintAnnot = true;
+          annot << " :no-pattern ";
           toStream(annot, nc[0], toDepth, nullptr);
-          annot << ") ";
         }
         else if (nck == kind::INST_ATTRIBUTE)
         {
@@ -977,15 +1038,14 @@ void Smt2Printer::toStream(std::ostream& out,
           // here only.
           if (nc[0].getKind() == kind::CONST_STRING)
           {
-            out << "(! ";
+            needsPrintAnnot = true;
             // print out as string to avoid quotes
-            annot << ":" << nc[0].getConst<String>().toString();
+            annot << " :" << nc[0].getConst<String>().toString();
             for (size_t j = 1, nchild = nc.getNumChildren(); j < nchild; j++)
             {
               annot << " ";
               toStream(annot, nc[j], toDepth, nullptr);
             }
-            annot << ") ";
           }
         }
       }
@@ -993,6 +1053,11 @@ void Smt2Printer::toStream(std::ostream& out,
     // Use a fresh let binder, since using existing let symbols may violate
     // scoping issues for let-bound variables, see explanation in let_binding.h.
     size_t dag = lbind == nullptr ? 0 : lbind->getThreshold()-1;
+    if (needsPrintAnnot)
+    {
+      out << "(! ";
+      annot << ")";
+    }
     toStream(out, n[1], toDepth - 1, dag);
     out << annot.str() << ")";
     return;
@@ -1132,9 +1197,12 @@ std::string Smt2Printer::smtKindString(Kind k)
     case kind::SELECT: return "select";
     case kind::STORE: return "store";
     case kind::ARRAY_TYPE: return "Array";
-    case kind::PARTIAL_SELECT_0: return "partial_select_0";
-    case kind::PARTIAL_SELECT_1: return "partial_select_1";
     case kind::EQ_RANGE: return "eqrange";
+
+    // ff theory
+  case kind::FINITE_FIELD_ADD: return "ff.add";
+  case kind::FINITE_FIELD_MULT: return "ff.mul";
+  case kind::FINITE_FIELD_NEG: return "ff.neg";
 
     // bv theory
     case kind::BITVECTOR_CONCAT: return "concat";
@@ -1890,7 +1958,18 @@ void Smt2Printer::toStreamCmdSetOption(std::ostream& out,
                                        const std::string& flag,
                                        const std::string& value) const
 {
-  out << "(set-option :" << flag << ' ' << value << ')' << std::endl;
+  out << "(set-option :" << flag << ' ';
+  // special cases: output channels require surrounding quotes in smt2 format
+  if (flag == "diagnostic-output-channel" || flag == "regular-output-channel"
+      || flag == "in")
+  {
+    out << "\"" << value << "\"";
+  }
+  else
+  {
+    out << value;
+  }
+  out << ')' << std::endl;
 }
 
 void Smt2Printer::toStreamCmdGetOption(std::ostream& out,
