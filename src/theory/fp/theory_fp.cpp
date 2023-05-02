@@ -146,18 +146,18 @@ TrustNode TheoryFp::ppRewrite(TNode node, std::vector<SkolemLemma>& lems)
     return texp;
   }
 
-  if (Configuration::isAssertionBuild())
-  {
-    // The following kinds should have been removed by the
-    // rewriter/expandDefinition
-    Kind k = node.getKind();
-    Assert(k != kind::FLOATINGPOINT_SUB && k != kind::FLOATINGPOINT_MIN
-           && k != kind::FLOATINGPOINT_MAX && k != kind::FLOATINGPOINT_EQ
-           && k != kind::FLOATINGPOINT_GEQ && k != kind::FLOATINGPOINT_GT
-           && k != kind::FLOATINGPOINT_TO_UBV && k != kind::FLOATINGPOINT_TO_SBV
-           && k != kind::FLOATINGPOINT_TO_REAL)
-        << "Expected floating-point kind " << k << " to be removed";
-  }
+  // The following kinds should have been removed by the
+  // rewriter/expandDefinition
+  Assert(node.getKind() != kind::FLOATINGPOINT_SUB
+         && node.getKind() != kind::FLOATINGPOINT_MIN
+         && node.getKind() != kind::FLOATINGPOINT_MAX
+         && node.getKind() != kind::FLOATINGPOINT_EQ
+         && node.getKind() != kind::FLOATINGPOINT_GEQ
+         && node.getKind() != kind::FLOATINGPOINT_GT
+         && node.getKind() != kind::FLOATINGPOINT_TO_UBV
+         && node.getKind() != kind::FLOATINGPOINT_TO_SBV
+         && node.getKind() != kind::FLOATINGPOINT_TO_REAL)
+      << "Expected floating-point kind " << node.getKind() << " to be removed";
 
   return TrustNode::null();
 }
@@ -484,7 +484,7 @@ void TheoryFp::registerTerm(TNode node)
   // getEqualityStatus works as expected when theory combination is enabled.
   if (k == kind::EQUAL)
   {
-    d_equalityEngine->addTriggerPredicate(node);
+    d_state.addEqualityEngineTriggerPredicate(node);
   }
   else
   {
@@ -764,7 +764,8 @@ TrustNode TheoryFp::explain(TNode n)
   return TrustNode::mkTrustPropExp(n, exp, nullptr);
 }
 
-Node TheoryFp::getModelValue(TNode var) {
+Node TheoryFp::getCandidateModelValue(TNode var)
+{
   return d_wordBlaster->getValue(d_valuation, var);
 }
 
@@ -787,44 +788,16 @@ bool TheoryFp::collectModelValues(TheoryModel* m,
           << "TheoryFp::collectModelInfo(): relevantTerms " << *i << std::endl;
     }
   }
-
-  std::unordered_set<TNode> visited;
-  std::vector<TNode> working;
-  std::set<TNode> relevantVariables;
-  for (const Node& n : relevantTerms)
+  for (const Node& node : relevantTerms)
   {
-    working.emplace_back(n);
-  }
-
-  while (!working.empty()) {
-    TNode current = working.back();
-    working.pop_back();
-
-    if (visited.find(current) != visited.end() || current.isClosure())
+    TypeNode t = node.getType();
+    if ((!t.isRoundingMode() && !t.isFloatingPoint()) || !this->isLeaf(node))
     {
-      // Ignore things that have already been explored and closures. For
-      // variables in closures (e.g., set comprehension), we rely on the
-      // reduction of the closures to handle the body.
       continue;
     }
 
-    visited.insert(current);
-
-    TypeNode t = current.getType();
-
-    if ((t.isRoundingMode() || t.isFloatingPoint()) && this->isLeaf(current))
-    {
-      relevantVariables.insert(current);
-    }
-
-    working.insert(working.end(), current.begin(), current.end());
-  }
-
-  for (const TNode& node : relevantVariables)
-  {
     Trace("fp-collectModelInfo")
-        << "TheoryFp::collectModelInfo(): relevantVariable " << node
-        << std::endl;
+        << "TheoryFp::collectModelInfo(): " << node << std::endl;
 
     Node wordBlasted = d_wordBlaster->getValue(d_valuation, node);
     // We only assign the value if the FpWordBlaster actually has one, that is,
