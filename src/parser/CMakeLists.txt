@@ -112,7 +112,9 @@ set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/smt2/smt2_lexer.cpp PROP
 # current build directory and set the FLEX_INCLUDE_DIRS variable accordingly.
 if(WIN32)
   file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/flex)
-  file(COPY /usr/include/FlexLexer.h DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/flex)
+  cmake_path(GET FLEX_EXECUTABLE PARENT_PATH FLEX_BIN_DIR)
+  cmake_path(GET FLEX_BIN_DIR PARENT_PATH FLEX_INSTALL_ROOT)
+  file(COPY ${FLEX_INSTALL_ROOT}/include/FlexLexer.h DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/flex)
   set(FLEX_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/flex)
 endif()
 
