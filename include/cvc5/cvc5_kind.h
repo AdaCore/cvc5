@@ -19,6 +19,7 @@
 #define CVC5__API__CVC5_KIND_H
 
 #include <ostream>
+#include <cstdint>
 
 namespace cvc5 {
 
