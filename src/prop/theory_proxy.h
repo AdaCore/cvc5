@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -71,6 +71,8 @@ class TheoryProxy : protected EnvObj, public Registrar
 
   /** Presolve, which calls presolve for the modules managed by this class */
   void presolve();
+  /** Postsolve, which calls postsolve for the modules managed by this class */
+  void postsolve();
 
   /**
    * Notify that lhs was substituted by rhs during preprocessing. This impacts
@@ -126,9 +128,20 @@ class TheoryProxy : protected EnvObj, public Registrar
 
   void enqueueTheoryLiteral(const SatLiteral& l);
 
-  SatLiteral getNextTheoryDecisionRequest();
-
-  SatLiteral getNextDecisionEngineRequest(bool& stopSearch);
+  /**
+   * Get the next decision request.
+   *
+   * If `requirePhase` is true, the decision must be decided as is, in the
+   * given polarity. Else it should respect the polarity configured via
+   * PropEngine::requirePhase, if any.
+   *
+   * @param requirePhase True if the returned SatLiteral must be decided
+   *                     as-is, in its given polarity.
+   * @param stopSearch   True if the current search should be terminated. In
+   *                     this case, lit_Undef is returned.
+   * @return The next decision.
+   */
+  SatLiteral getNextDecisionRequest(bool& requirePhase, bool& stopSearch);
 
   bool theoryNeedCheck() const;
 

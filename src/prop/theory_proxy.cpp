@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -54,7 +54,7 @@ TheoryProxy::TheoryProxy(Env& env,
       d_skdm(skdm),
       d_zll(nullptr),
       d_prr(nullptr),
-      d_stopSearch(false, userContext()),
+      d_stopSearch(userContext(), false),
       d_activatedSkDefs(false)
 {
   bool trackZeroLevel =
@@ -100,6 +100,8 @@ void TheoryProxy::presolve()
   d_theoryEngine->presolve();
   d_stopSearch = false;
 }
+
+void TheoryProxy::postsolve() { d_theoryEngine->postsolve(); }
 
 void TheoryProxy::notifyTopLevelSubstitution(const Node& lhs,
                                              const Node& rhs) const
@@ -305,32 +307,42 @@ void TheoryProxy::enqueueTheoryLiteral(const SatLiteral& l) {
   d_queue.push(std::make_pair(literalNode, context()->getLevel() - 1));
 }
 
-SatLiteral TheoryProxy::getNextTheoryDecisionRequest() {
+SatLiteral TheoryProxy::getNextDecisionRequest(bool& requirePhase,
+                                               bool& stopSearch)
+{
+  Trace("theory-proxy") << "TheoryProxy: getNextDecisionRequest" << std::endl;
+  SatLiteral res = undefSatLiteral;
   TNode n = d_theoryEngine->getNextDecisionRequest();
-  return n.isNull() ? undefSatLiteral : d_cnfStream->getLiteral(n);
-}
-
-SatLiteral TheoryProxy::getNextDecisionEngineRequest(bool &stopSearch) {
-  Assert(d_decisionEngine != NULL);
-  Assert(stopSearch != true);
-  Trace("theory-proxy") << "TheoryProxy: getNextDecisionEngineRequest"
-                        << std::endl;
-  if (d_stopSearch.get())
+  if (!n.isNull())
   {
-    Trace("theory-proxy") << "...stopped search, finish" << std::endl;
-    stopSearch = true;
-    return undefSatLiteral;
-  }
-  SatLiteral ret = d_decisionEngine->getNext(stopSearch);
-  if(stopSearch) {
-    Trace("theory-proxy") << "  ***  Decision Engine stopped search *** "
-                          << std::endl;
+    requirePhase = true;
+    res = d_cnfStream->getLiteral(n);
   }
   else
   {
-    Trace("theory-proxy") << "...returned next decision" << std::endl;
+    Assert(d_decisionEngine != nullptr);
+    Assert(stopSearch != true);
+    requirePhase = false;
+    if (d_stopSearch.get())
+    {
+      Trace("theory-proxy") << "...stopped search, finish" << std::endl;
+      stopSearch = true;
+    }
+    else
+    {
+      res = d_decisionEngine->getNext(stopSearch);
+      if (stopSearch)
+      {
+        Trace("theory-proxy")
+            << "  ***  Decision Engine stopped search *** " << std::endl;
+      }
+      else
+      {
+        Trace("theory-proxy") << "...returned next decision" << std::endl;
+      }
+    }
   }
-  return ret;
+  return res;
 }
 
 bool TheoryProxy::theoryNeedCheck() const {
@@ -462,7 +474,7 @@ modes::LearnedLitType TheoryProxy::getLiteralType(const Node& lit) const
   {
     return d_zll->computeLearnedLiteralType(lit);
   }
-  return modes::LEARNED_LIT_UNKNOWN;
+  return modes::LearnedLitType::UNKNOWN;
 }
 
 std::vector<Node> TheoryProxy::getLearnedZeroLevelLiteralsForRestart() const

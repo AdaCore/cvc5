@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -34,6 +34,7 @@
 #include "theory/quantifiers/term_util.h"
 #include "theory/rewriter.h"
 #include "theory/strings/theory_strings_utils.h"
+#include "theory/uf/theory_uf_rewriter.h"
 #include "util/rational.h"
 
 using namespace std;
@@ -196,60 +197,75 @@ void QuantifiersRewriter::computeArgVec2(const std::vector<Node>& args,
 }
 
 RewriteResponse QuantifiersRewriter::preRewrite(TNode in) {
-  if( in.getKind()==kind::EXISTS || in.getKind()==kind::FORALL ){
-    Trace("quantifiers-rewrite-debug") << "pre-rewriting " << in << std::endl;
-    std::vector< Node > args;
-    Node body = in;
-    bool doRewrite = false;
-    while( body.getNumChildren()==2 && body.getKind()==body[1].getKind() ){
-      for( unsigned i=0; i<body[0].getNumChildren(); i++ ){
-        args.push_back( body[0][i] );
-      }
-      body = body[1];
-      doRewrite = true;
-    }
-    if( doRewrite ){
-      std::vector< Node > children;
-      for( unsigned i=0; i<body[0].getNumChildren(); i++ ){
-        args.push_back( body[0][i] );
-      }      
-      children.push_back( NodeManager::currentNM()->mkNode(kind::BOUND_VAR_LIST,args) );
-      children.push_back( body[1] );
-      if( body.getNumChildren()==3 ){
-        children.push_back( body[2] );
-      }
-      Node n = NodeManager::currentNM()->mkNode( in.getKind(), children );
-      if( in!=n ){
-        Trace("quantifiers-pre-rewrite") << "*** pre-rewrite " << in << std::endl;
-        Trace("quantifiers-pre-rewrite") << " to " << std::endl;
-        Trace("quantifiers-pre-rewrite") << n << std::endl;
-      }
-      return RewriteResponse(REWRITE_DONE, n);
-    }
-  }
   return RewriteResponse(REWRITE_DONE, in);
 }
 
-RewriteResponse QuantifiersRewriter::postRewrite(TNode in) {
+RewriteResponse QuantifiersRewriter::postRewrite(TNode in)
+{
   Trace("quantifiers-rewrite-debug") << "post-rewriting " << in << std::endl;
   RewriteStatus status = REWRITE_DONE;
   Node ret = in;
   RewriteStep rew_op = COMPUTE_LAST;
-  //get the body
-  if( in.getKind()==EXISTS ){
-    std::vector< Node > children;
-    children.push_back( in[0] );
-    children.push_back( in[1].negate() );
-    if( in.getNumChildren()==3 ){
-      children.push_back( in[2] );
+  // get the body
+  if (in.getKind() == EXISTS)
+  {
+    std::vector<Node> children;
+    children.push_back(in[0]);
+    children.push_back(in[1].negate());
+    if (in.getNumChildren() == 3)
+    {
+      children.push_back(in[2]);
     }
-    ret = NodeManager::currentNM()->mkNode( FORALL, children );
+    ret = NodeManager::currentNM()->mkNode(FORALL, children);
     ret = ret.negate();
     status = REWRITE_AGAIN_FULL;
-  }else if( in.getKind()==FORALL ){
-    if( in[1].isConst() && in.getNumChildren()==2 ){
+  }
+  else if (in.getKind() == FORALL)
+  {
+    std::vector<Node> boundVars;
+    Node body = in;
+    bool combineQuantifiers = false;
+    bool continueCombine = false;
+    do
+    {
+      for (const Node& v : body[0])
+      {
+        if (std::find(boundVars.begin(), boundVars.end(), v)==boundVars.end())
+        {
+          boundVars.push_back(v);
+        }
+      }
+      if (body.getNumChildren() == 2 && body[1].getKind() == FORALL)
+      {
+        body = body[1];
+        continueCombine = true;
+        combineQuantifiers = true;
+      }
+      else
+      {
+        continueCombine = false;
+      }
+    }
+    while (continueCombine);
+    if (combineQuantifiers)
+    {
+      NodeManager* nm = NodeManager::currentNM();
+      std::vector<Node> children;
+      children.push_back(nm->mkNode(BOUND_VAR_LIST, boundVars));
+      children.push_back(body[1]);
+      if (body.getNumChildren() == 3)
+      {
+        children.push_back(body[2]);
+      }
+      ret = nm->mkNode(FORALL, children);
+      status = REWRITE_AGAIN_FULL;
+    }
+    else if (in[1].isConst() && in.getNumChildren() == 2)
+    {
       return RewriteResponse( status, in[1] );
-    }else{
+    }
+    else
+    {
       //compute attributes
       QAttributes qa;
       QuantAttributes::computeQuantAttributes( in, qa );
@@ -663,6 +679,16 @@ Node QuantifiersRewriter::computeProcessTerms2(
     for (int i = (iconds.size() - 1); i >= 0; i--)
     {
       ret = nm->mkNode(ITE, iconds[i], elements[i], ret);
+    }
+  }
+  else if (ret.getKind() == HO_APPLY && !ret.getType().isFunction())
+  {
+    // fully applied functions are converted to APPLY_UF here.
+    Node fullApp = uf::TheoryUfRewriter::getApplyUfForHoApply(ret);
+    // it may not be possible to convert e.g. if the head is not a variable
+    if (!fullApp.isNull())
+    {
+      ret = fullApp;
     }
   }
   cache[body] = ret;
@@ -1911,6 +1937,21 @@ Node QuantifiersRewriter::computeAggressiveMiniscoping(std::vector<Node>& args,
   return mkForAll( args, body, qa );
 }
 
+bool QuantifiersRewriter::isStandard(const Node& q, const Options& opts)
+{
+  QAttributes qa;
+  QuantAttributes::computeQuantAttributes(q, qa);
+  return isStandard(qa, opts);
+}
+
+bool QuantifiersRewriter::isStandard(QAttributes& qa, const Options& opts)
+{
+  bool is_strict_trigger =
+      qa.d_hasPattern
+      && opts.quantifiers.userPatternsQuant == options::UserPatMode::STRICT;
+  return qa.isStandard() && !is_strict_trigger;
+}
+
 bool QuantifiersRewriter::doOperation(Node q,
                                       RewriteStep computeOption,
                                       QAttributes& qa) const
@@ -1918,7 +1959,7 @@ bool QuantifiersRewriter::doOperation(Node q,
   bool is_strict_trigger =
       qa.d_hasPattern
       && d_opts.quantifiers.userPatternsQuant == options::UserPatMode::STRICT;
-  bool is_std = qa.isStandard() && !is_strict_trigger;
+  bool is_std = isStandard(qa, d_opts);
   if (computeOption == COMPUTE_ELIM_SYMBOLS)
   {
     return true;
