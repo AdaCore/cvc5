@@ -110,6 +110,7 @@ void Smt2State::addBitvectorOperators()
   addOperator(Kind::BITVECTOR_SGE, "bvsge");
   addOperator(Kind::BITVECTOR_REDOR, "bvredor");
   addOperator(Kind::BITVECTOR_REDAND, "bvredand");
+  addOperator(Kind::BITVECTOR_NEGO, "bvnego");
   addOperator(Kind::BITVECTOR_UADDO, "bvuaddo");
   addOperator(Kind::BITVECTOR_SADDO, "bvsaddo");
   addOperator(Kind::BITVECTOR_UMULO, "bvumulo");
@@ -131,6 +132,7 @@ void Smt2State::addFiniteFieldOperators()
   addOperator(cvc5::Kind::FINITE_FIELD_ADD, "ff.add");
   addOperator(cvc5::Kind::FINITE_FIELD_MULT, "ff.mul");
   addOperator(cvc5::Kind::FINITE_FIELD_NEG, "ff.neg");
+  addOperator(cvc5::Kind::FINITE_FIELD_BITSUM, "ff.bitsum");
 }
 
 void Smt2State::addDatatypesOperators()
@@ -154,7 +156,7 @@ void Smt2State::addDatatypesOperators()
     // (for the 0-ary tuple), and a operator, hence we call both addOperator
     // and defineVar here.
     addOperator(Kind::APPLY_CONSTRUCTOR, "tuple");
-    defineVar("tuple", d_solver->mkTuple({}));
+    defineVar("tuple.unit", d_solver->mkTuple({}));
     addIndexedOperator(Kind::UNDEFINED_KIND, "tuple.select");
     addIndexedOperator(Kind::UNDEFINED_KIND, "tuple.update");
   }
@@ -567,7 +569,10 @@ Term Smt2State::mkIndexedOp(Kind k,
   if (k == Kind::APPLY_TESTER || k == Kind::APPLY_UPDATER)
   {
     Assert(symbols.size() == 1);
-    Assert(!args.empty());
+    if (args.empty())
+    {
+      parseError("Expected argument to tester/updater");
+    }
     const std::string& cname = symbols[0];
     // must be declared
     checkDeclaration(cname, CHECK_DECLARED, SYM_VARIABLE);
@@ -823,7 +828,7 @@ void Smt2State::setLogic(std::string name)
   if (d_logic.isTheoryEnabled(internal::theory::THEORY_DATATYPES))
   {
     const std::vector<Sort> types;
-    defineType("Tuple", d_solver->mkTupleSort(types), true);
+    defineType("UnitTuple", d_solver->mkTupleSort(types), true);
     addDatatypesOperators();
   }
 
@@ -1021,7 +1026,10 @@ void Smt2State::checkThatLogicIsSet()
       // important since we do not want to enqueue a set-logic command and
       // fully initialize the underlying SolverEngine in the meantime before the
       // command has a chance to execute, which would lead to an error.
-      d_solver->setLogic(d_logic.getLogicString());
+      std::string logic = d_logic.getLogicString();
+      d_solver->setLogic(logic);
+      // set the logic on the symbol manager as well, non-forced
+      sm->setLogic(logic);
     }
   }
 }

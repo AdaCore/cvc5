@@ -1004,6 +1004,25 @@ class CVC5_EXPORT GetUnsatCoreCommand : public Cmd
   std::vector<cvc5::Term> d_result;
 }; /* class GetUnsatCoreCommand */
 
+class CVC5_EXPORT GetUnsatCoreLemmasCommand : public Cmd
+{
+ public:
+  GetUnsatCoreLemmasCommand();
+  const std::vector<cvc5::Term>& getUnsatCoreLemmas() const;
+
+  void invoke(cvc5::Solver* solver, parser::SymManager* sm) override;
+  void printResult(cvc5::Solver* solver, std::ostream& out) const override;
+
+  std::string getCommandName() const override;
+  void toStream(std::ostream& out) const override;
+
+ protected:
+  /** The solver we were invoked with */
+  cvc5::Solver* d_solver;
+  /** the result of the unsat core call */
+  std::vector<cvc5::Term> d_result;
+}; /* class GetUnsatCoreLemmasCommand */
+
 class CVC5_EXPORT GetDifficultyCommand : public Cmd
 {
  public:
@@ -1026,6 +1045,7 @@ class CVC5_EXPORT GetDifficultyCommand : public Cmd
 class CVC5_EXPORT GetTimeoutCoreCommand : public Cmd
 {
  public:
+  GetTimeoutCoreCommand(const std::vector<Term>& assumptions);
   GetTimeoutCoreCommand();
   cvc5::Result getResult() const;
   const std::vector<cvc5::Term>& getTimeoutCore() const;
@@ -1041,6 +1061,8 @@ class CVC5_EXPORT GetTimeoutCoreCommand : public Cmd
   cvc5::Solver* d_solver;
   /** The symbol manager we were invoked with */
   parser::SymManager* d_sm;
+  /** Assumptions */
+  std::vector<Term> d_assumptions;
   /** the result of the timeout core call */
   std::pair<cvc5::Result, std::vector<cvc5::Term>> d_result;
 };
