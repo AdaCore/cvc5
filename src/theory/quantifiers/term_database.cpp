@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2022 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -52,7 +52,6 @@ TermDb::TermDb(Env& env, QuantifiersState& qs, QuantifiersRegistry& qr)
       d_opMap(d_termsContextUse),
       d_inactive_map(context())
 {
-  d_consistent_ee = true;
   d_true = NodeManager::currentNM()->mkConst(true);
   d_false = NodeManager::currentNM()->mkConst(false);
   if (!options().quantifiers.termDbCd)
@@ -188,11 +187,13 @@ Node TermDb::getMatchOperator(TNode n)
 {
   Kind k = n.getKind();
   //datatype operators may be parametric, always assume they are
-  if (k == SELECT || k == STORE || k == SET_UNION || k == SET_INTER
-      || k == SET_SUBSET || k == SET_MINUS || k == SET_MEMBER
-      || k == SET_SINGLETON || k == APPLY_SELECTOR || k == APPLY_TESTER
-      || k == SEP_PTO || k == HO_APPLY || k == SEQ_NTH || k == STRING_LENGTH
-      || k == BITVECTOR_TO_NAT || k == INT_TO_BITVECTOR)
+  if (k == Kind::SELECT || k == Kind::STORE || k == Kind::SET_UNION
+      || k == Kind::SET_INTER || k == Kind::SET_SUBSET || k == Kind::SET_MINUS
+      || k == Kind::SET_MEMBER || k == Kind::SET_SINGLETON
+      || k == Kind::APPLY_SELECTOR || k == Kind::APPLY_TESTER
+      || k == Kind::SEP_PTO || k == Kind::HO_APPLY || k == Kind::SEQ_NTH
+      || k == Kind::STRING_LENGTH || k == Kind::BITVECTOR_TO_NAT
+      || k == Kind::INT_TO_BITVECTOR)
   {
     //since it is parametric, use a particular one as op
     TypeNode tn = n[0].getType();
@@ -276,7 +277,7 @@ DbList* TermDb::getOrMkDbListForOp(TNode op)
   }
   std::shared_ptr<DbList> dl = std::make_shared<DbList>(d_termsContextUse);
   d_opMap.insert(op, dl);
-  Assert(op.getKind() != BOUND_VARIABLE);
+  Assert(op.getKind() != Kind::BOUND_VARIABLE);
   d_ops.push_back(op);
   return dl.get();
 }
@@ -402,7 +403,8 @@ void TermDb::computeUfTerms( TNode f ) {
         {
           if (at[k] != n[k])
           {
-            lits.push_back(nm->mkNode(EQUAL, at[k], n[k]).negate());
+            lits.push_back(nm->mkNode(Kind::EQUAL, at[k], n[k]).negate());
+            Assert(d_qstate.areEqual(at[k], n[k]));
           }
         }
         Node lem = nm->mkOr(lits);
@@ -420,7 +422,6 @@ void TermDb::computeUfTerms( TNode f ) {
         }
         d_qim->addPendingLemma(lem, InferenceId::QUANTIFIERS_TDB_DEQ_CONG);
         d_qstate.notifyInConflict();
-        d_consistent_ee = false;
         return;
       }
       nonCongruentCount++;
@@ -553,12 +554,6 @@ Node TermDb::getEligibleTermInEqc( TNode r ) {
   }
 }
 
-bool TermDb::resetInternal(Theory::Effort e)
-{
-  // do nothing
-  return true;
-}
-
 bool TermDb::finishResetInternal(Theory::Effort e)
 {
   // do nothing
@@ -599,16 +594,10 @@ bool TermDb::reset( Theory::Effort effort ){
   d_func_map_trie.clear();
   d_func_map_eqc_trie.clear();
   d_fmapRelDom.clear();
-  d_consistent_ee = true;
 
   eq::EqualityEngine* ee = d_qstate.getEqualityEngine();
 
   Assert(ee->consistent());
-  // if higher-order, add equalities for the purification terms now
-  if (!resetInternal(effort))
-  {
-    return false;
-  }
 
   //compute has map
   if (options().quantifiers.termDbMode == options::TermDbMode::RELEVANT)
