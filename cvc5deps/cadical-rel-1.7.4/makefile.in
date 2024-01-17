@@ -9,6 +9,7 @@
 
 CXX=@CXX@
 CXXFLAGS=@CXXFLAGS@
+AR=@AR@
 
 LIBS=@LIBS@
 
@@ -47,7 +48,7 @@ mobical: mobical.o libcadical.a makefile $(LIBS)
 	$(COMPILE) -o $@ $< -L. -lcadical
 
 libcadical.a: $(OBJ) makefile
-	ar rc $@ $(OBJ)
+	$(AR) rc $@ $(OBJ)
 
 #--------------------------------------------------------------------------#
 
