@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andrew Reynolds, Abdalrhman Mohamed, Aina Niemetz
+ *   Andrew Reynolds, Aina Niemetz, Abdalrhman Mohamed
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -46,9 +46,8 @@ using namespace cvc5::internal::kind;
 namespace cvc5::internal {
 namespace proof {
 
-LfscNodeConverter::LfscNodeConverter()
+LfscNodeConverter::LfscNodeConverter(NodeManager* nm) : NodeConverter(nm)
 {
-  NodeManager* nm = NodeManager::currentNM();
   d_arrow = nm->mkSortConstructor("arrow", 2);
 
   d_sortType = nm->mkSort("sortType");
@@ -122,7 +121,7 @@ Node LfscNodeConverter::postConvert(Node n)
     // ignore internally generated symbols
     return n;
   }
-  else if (k == Kind::SKOLEM)
+  else if (k == Kind::SKOLEM || k == Kind::DUMMY_SKOLEM)
   {
     // constructors/selectors are represented by skolems, which are defined
     // symbols
@@ -394,17 +393,18 @@ Node LfscNodeConverter::postConvert(Node n)
     Node n2 = nm->mkConstInt(Rational(op.d_loopMaxOcc));
     return mkApplyUf(mkApplyUf(rop, {n1, n2}), {n[0]});
   }
-  else if (k == Kind::BITVECTOR_BB_TERM)
+  else if (k == Kind::BITVECTOR_FROM_BOOLS)
   {
     TypeNode btn = nm->booleanType();
-    // (bbT t1 ... tn) is (bbT t1 (bbT t2 ... (bbT tn emptybv)))
-    // where notice that each bbT has a different type
+    // (from_bools t1 ... tn) is
+    // (from_bools t1 (from_bools t2 ... (from_bools tn emptybv)))
+    // where notice that each from_bools has a different type
     Node curr = getNullTerminator(Kind::BITVECTOR_CONCAT, tn);
     for (size_t i = 0, nchild = n.getNumChildren(); i < nchild; ++i)
     {
       TypeNode bvt = nm->mkBitVectorType(i + 1);
       TypeNode ftype = nm->mkFunctionType({btn, curr.getType()}, bvt);
-      Node bbt = getSymbolInternal(k, ftype, "bbT");
+      Node bbt = getSymbolInternal(k, ftype, "from_bools");
       curr = mkApplyUf(bbt, {n[nchild - (i + 1)], curr});
     }
     return curr;
@@ -671,6 +671,11 @@ TypeNode LfscNodeConverter::postConvertType(TypeNode tn)
       std::string name = tn.getUninterpretedSortConstructor().getName();
       op = getSymbolInternal(k, ftype, name, false);
     }
+    else if (k == Kind::NULLABLE_TYPE)
+    {
+      TypeNode ftype = nm->mkFunctionType(d_sortType, d_sortType);
+      op = getSymbolInternal(k, ftype, "Nullable", false);
+    }
     else
     {
       std::map<Kind, Node>::iterator it = d_typeKindToNodeCons.find(k);
@@ -789,26 +794,12 @@ Node LfscNodeConverter::maybeMkSkolemFun(Node k, bool macroApply)
 {
   NodeManager* nm = NodeManager::currentNM();
   SkolemManager* sm = nm->getSkolemManager();
-  SkolemFunId sfi = SkolemFunId::NONE;
+  SkolemId sfi = SkolemId::NONE;
   Node cacheVal;
   TypeNode tn = k.getType();
   if (sm->isSkolemFunction(k, sfi, cacheVal))
   {
-    if (sfi == SkolemFunId::SHARED_SELECTOR)
-    {
-      // a skolem corresponding to shared selector should print in
-      // LFSC as (sel T n) where T is the type and n is the index of the
-      // shared selector.
-      TypeNode fselt = nm->mkFunctionType(tn.getDatatypeSelectorDomainType(),
-                                          tn.getDatatypeSelectorRangeType());
-      TypeNode intType = nm->integerType();
-      TypeNode selt = nm->mkFunctionType({d_sortType, intType}, fselt);
-      Node sel = getSymbolInternal(k.getKind(), selt, "sel");
-      Node kn = typeAsNode(convertType(tn.getDatatypeSelectorRangeType()));
-      Assert(!cacheVal.isNull() && cacheVal.getKind() == Kind::CONST_RATIONAL);
-      return mkApplyUf(sel, {kn, cacheVal});
-    }
-    else if (sfi == SkolemFunId::RE_UNFOLD_POS_COMPONENT)
+    if (sfi == SkolemId::RE_UNFOLD_POS_COMPONENT)
     {
       // a skolem corresponding to a regular expression unfolding component
       // should print as (skolem_re_unfold_pos t R n) where the skolem is the
@@ -1032,6 +1023,10 @@ Node LfscNodeConverter::getOperatorOfTerm(Node n, bool macroApply)
       {
         opName << "to_fp_real";
       }
+      else if (k == Kind::BITVECTOR_BIT)
+      {
+        opName << "bit";
+      }
       else
       {
         opName << printer::smt2::Smt2Printer::smtKindString(k);
@@ -1115,11 +1110,6 @@ Node LfscNodeConverter::getOperatorOfTerm(Node n, bool macroApply)
     opName << "u";
   }
   opName << printer::smt2::Smt2Printer::smtKindString(k);
-  if (k == Kind::DIVISION_TOTAL || k == Kind::INTS_DIVISION_TOTAL
-      || k == Kind::INTS_MODULUS_TOTAL)
-  {
-    opName << "_total";
-  }
   return getSymbolInternal(k, ftype, opName.str());
 }
 
