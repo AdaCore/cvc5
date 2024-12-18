@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Hanna Lachnitt, Haniel Barbosa, Andrew Reynolds
+ *   Hanna Lachnitt, Haniel Barbosa, Aina Niemetz
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -54,7 +54,7 @@ AletheProofPostprocessCallback::AletheProofPostprocessCallback(
     Env& env, AletheNodeConverter& anc, bool resPivots)
     : EnvObj(env), d_anc(anc), d_resPivots(resPivots)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   d_cl = nm->mkBoundVar("cl", nm->sExprType());
   d_true = nm->mkConst(true);
   d_false = nm->mkConst(false);
@@ -86,7 +86,7 @@ bool AletheProofPostprocessCallback::update(Node res,
   Trace("alethe-proof") << "...Alethe pre-update " << res << " " << id << " "
                         << children << " / " << args << std::endl;
 
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   std::vector<Node> new_args = std::vector<Node>();
 
   switch (id)
@@ -436,15 +436,28 @@ bool AletheProofPostprocessCallback::update(Node res,
     case ProofRule::CHAIN_RESOLUTION:
     {
       std::vector<Node> newArgs;
+      std::vector<Node> cargs;
+      if (id == ProofRule::CHAIN_RESOLUTION)
+      {
+        for (size_t i = 0, nargs = args[0].getNumChildren(); i < nargs; i++)
+        {
+          cargs.push_back(args[0][i]);
+          cargs.push_back(args[1][i]);
+        }
+      }
+      else
+      {
+        cargs = args;
+      }
       // checker expects opposite order. We always keep the pivots because we
       // need them to compute in updatePost whether we will add OR steps. If
       // d_resPivots is off we will remove the pivots after that.
-      for (size_t i = 0, size = args.size(); i < size; i = i + 2)
+      for (size_t i = 0, size = cargs.size(); i < size; i = i + 2)
       {
-        newArgs.push_back(args[i + 1]);
-        newArgs.push_back(args[i]);
+        newArgs.push_back(cargs[i + 1]);
+        newArgs.push_back(cargs[i]);
       }
-      if (!isSingletonClause(res, children, args))
+      if (!isSingletonClause(res, children, cargs))
       {
         return addAletheStepFromOr(
             AletheRule::RESOLUTION_OR, res, children, newArgs, *cdp);
@@ -1084,6 +1097,7 @@ bool AletheProofPostprocessCallback::update(Node res,
     // ** the corresponding proof node is (= (<kind> f? t1 ... tn) (<kind> f?
     // s1 ... sn))
     case ProofRule::CONG:
+    case ProofRule::NARY_CONG:
     {
       if (res[0].isClosure())
       {
@@ -1258,7 +1272,7 @@ bool AletheProofPostprocessCallback::update(Node res,
     // For now this introduces a hole. The processing in the future should
     // generate corresponding Alethe steps for each particular axiom for term
     // removal (for example for the ITE case).
-    case ProofRule::REMOVE_TERM_FORMULA_AXIOM:
+    case ProofRule::ITE_EQ:
     {
       return addAletheStep(AletheRule::HOLE,
                            res,
@@ -1423,7 +1437,7 @@ bool AletheProofPostprocessCallback::update(Node res,
     // See proof_rule.h for documentation on the INSTANTIATE rule. This
     // comment uses variable names as introduced there.
     //
-    // ----- FORALL_INST, (= x1 t1) ... (= xn tn)
+    // ----- FORALL_INST, t1 ... tn
     //  VP1
     // ----- OR
     //  VP2              P
@@ -1436,15 +1450,15 @@ bool AletheProofPostprocessCallback::update(Node res,
     // ^ the corresponding proof node is F*sigma
     case ProofRule::INSTANTIATE:
     {
-      for (size_t i = 0, size = children[0][0].getNumChildren(); i < size; i++)
-      {
-        new_args.push_back(children[0][0][i].eqNode(args[i]));
-      }
       Node vp1 = nm->mkNode(
           Kind::SEXPR, d_cl, nm->mkNode(Kind::OR, children[0].notNode(), res));
       Node vp2 = nm->mkNode(Kind::SEXPR, d_cl, children[0].notNode(), res);
-      return addAletheStep(
-                 AletheRule::FORALL_INST, vp1, vp1, {}, new_args, *cdp)
+      return addAletheStep(AletheRule::FORALL_INST,
+                           vp1,
+                           vp1,
+                           {},
+                           std::vector<Node>{args[0].begin(), args[0].end()},
+                           *cdp)
              && addAletheStep(AletheRule::OR, vp2, vp2, {vp1}, {}, *cdp)
              && addAletheStep(AletheRule::RESOLUTION,
                               res,
@@ -1454,6 +1468,55 @@ bool AletheProofPostprocessCallback::update(Node res,
                                   ? std::vector<Node>{children[0], d_false}
                                   : std::vector<Node>(),
                               *cdp);
+    }
+    // ======== Alpha Equivalence
+    //
+    // Given the formula F = (forall ((y1 A1) ... (yn An)) G) and the
+    // substitution sigma = {y1 -> z1, ..., yn -> zn}, the step is represented
+    // as
+    //
+    //  ------------------ refl
+    //  (cl (= G G*sigma))
+    // -------------------- bind, z1 ... zn (= y1 z1) ... (= yn zn)
+    //  (= F F*sigma)
+    //
+    // In case the sigma is the identity this step is merely converted to
+    //
+    //  ------------------ refl
+    //  (cl (= F F))
+    case ProofRule::ALPHA_EQUIV:
+    {
+      std::vector<Node> varEqs;
+      // If y1 ... yn are mapped to y1 ... yn it suffices to use a refl step
+      bool allSame = true;
+      for (size_t i = 0, size = res[0][0].getNumChildren(); i < size; ++i)
+      {
+        Node v0 = res[0][0][i], v1 = res[1][0][i];
+        allSame = allSame && v0 == v1;
+        varEqs.push_back(v0.eqNode(v1));
+      }
+      if (allSame)
+      {
+        return addAletheStep(AletheRule::REFL,
+                             res,
+                             nm->mkNode(Kind::SEXPR, d_cl, res),
+                             {},
+                             {},
+                             *cdp);
+      }
+      // Reflexivity over the quantified bodies
+      Node vp = nm->mkNode(
+          Kind::SEXPR, d_cl, nm->mkNode(Kind::EQUAL, res[0][1], res[1][1]));
+      addAletheStep(AletheRule::REFL, vp, vp, {}, {}, *cdp);
+      // collect variables first
+      new_args.insert(new_args.end(), res[1][0].begin(), res[1][0].end());
+      new_args.insert(new_args.end(), varEqs.begin(), varEqs.end());
+      return addAletheStep(AletheRule::ANCHOR_BIND,
+                           res,
+                           nm->mkNode(Kind::SEXPR, d_cl, res),
+                           {vp},
+                           new_args,
+                           *cdp);
     }
     //================================================= Arithmetic rules
     // ======== Adding Scaled Inequalities
@@ -1858,7 +1921,7 @@ bool AletheProofPostprocessCallback::maybeReplacePremiseProof(Node premise,
   // The solution is to *not* use FACTORING/REORDERING (which in Alethe
   // operate on clauses) but generate a proof to obtain (via rewriting) the
   // expected node (or t1' ... tn') from the original node (or t1 ... tn).
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   Trace("alethe-proof") << "\n";
   CVC5_UNUSED AletheRule premiseProofRule =
       getAletheRule(premisePf->getArguments()[0]);
@@ -1927,7 +1990,7 @@ bool AletheProofPostprocessCallback::updatePost(
     const std::vector<Node>& args,
     CDProof* cdp)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   AletheRule rule = getAletheRule(args[0]);
   Trace("alethe-proof") << "...Alethe post-update " << rule << " / " << res
                         << " / args: " << args << std::endl;
@@ -2190,7 +2253,7 @@ bool AletheProofPostprocessCallback::finalStep(Node res,
                                                const std::vector<Node>& args,
                                                CDProof* cdp)
 {
-  NodeManager* nm = NodeManager::currentNM();
+  NodeManager* nm = nodeManager();
   std::shared_ptr<ProofNode> childPf = cdp->getProofFor(children[0]);
 
   // convert inner proof, i.e., children[0], if its conclusion is (cl false) or
@@ -2235,8 +2298,8 @@ bool AletheProofPostprocessCallback::addAletheStep(
     const std::vector<Node>& args,
     CDProof& cdp)
 {
-  std::vector<Node> newArgs{NodeManager::currentNM()->mkConstInt(
-      Rational(static_cast<uint32_t>(rule)))};
+  std::vector<Node> newArgs{
+      nodeManager()->mkConstInt(Rational(static_cast<uint32_t>(rule)))};
   newArgs.push_back(res);
   newArgs.push_back(d_anc.convert(conclusion));
   for (const Node& arg : args)
@@ -2258,7 +2321,7 @@ bool AletheProofPostprocessCallback::addAletheStepFromOr(
 {
   std::vector<Node> subterms = {d_cl};
   subterms.insert(subterms.end(), res.begin(), res.end());
-  Node conclusion = NodeManager::currentNM()->mkNode(Kind::SEXPR, subterms);
+  Node conclusion = nodeManager()->mkNode(Kind::SEXPR, subterms);
   return addAletheStep(rule, res, conclusion, children, args, cdp);
 }
 

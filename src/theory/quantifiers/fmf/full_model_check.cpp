@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andrew Reynolds, Mathias Preiner, Aina Niemetz
+ *   Andrew Reynolds, Aina Niemetz, Mathias Preiner
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2023 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -15,6 +15,7 @@
 
 #include "theory/quantifiers/fmf/full_model_check.h"
 
+#include "expr/node_algorithm.h"
 #include "expr/skolem_manager.h"
 #include "options/quantifiers_options.h"
 #include "options/strings_options.h"
@@ -1054,17 +1055,31 @@ void FullModelChecker::doCheck(FirstOrderModelFmc * fm, Node f, Def & d, Node n 
     else
     {
       if( !var_ch.empty() ){
+        bool processed = false;
         if (n.getKind() == Kind::EQUAL && !n[0].getType().isBoolean())
         {
           if( var_ch.size()==2 ){
             Trace("fmc-debug") << "Do variable equality " << n << std::endl;
             doVariableEquality( fm, f, d, n );
-          }else{
-            Trace("fmc-debug") << "Do variable relation " << n << std::endl;
-            doVariableRelation( fm, f, d, var_ch[0]==0 ? children[1] : children[0], var_ch[0]==0 ? n[0] : n[1] );
+            processed = true;
+          }
+          else
+          {
+            Node var = var_ch[0] == 0 ? n[0] : n[1];
+            Node oterm = var_ch[0] == 0 ? n[1] : n[0];
+            if (!expr::hasSubterm(oterm, var))
+            {
+              Trace("fmc-debug") << "Do variable relation " << n << std::endl;
+              doVariableRelation(fm,
+                                 f,
+                                 d,
+                                 var_ch[0] == 0 ? children[1] : children[0],
+                                 var_ch[0] == 0 ? n[0] : n[1]);
+              processed = true;
+            }
           }
         }
-        else
+        if (!processed)
         {
           Trace("fmc-warn") << "Don't know how to check " << n << std::endl;
           d.addEntry(fm, mkCondDefault(fm, f), Node::null());

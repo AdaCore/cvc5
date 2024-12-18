@@ -66,3 +66,62 @@ name   = "Theory Layer"
 [[option.mode.CARE_GRAPH]]
   name = "care-graph"
   help = "Use care graphs for theory combination."
+
+[[option]]
+  name       = "conflictProcessMode"
+  category   = "expert"
+  long       = "conflict-process=MODE"
+  type       = "ConflictProcessMode"
+  default    = "NONE"
+  help       = "mode for processing theory conflicts"
+  help_mode  = "Defines mode for processing theory conflicts."
+[[option.mode.NONE]]
+  name = "none"
+  help = "Do not post-process conflicts from theory solvers."
+[[option.mode.MINIMIZE]]
+  name = "min"
+  help = "Do simple minimization for conflicts from theory solvers."
+[[option.mode.MINIMIZE_EXT]]
+  name = "min-ext"
+  help = "Do minimization for conflicts from theory solvers, relying on the extended rewriter."
+
+[[option]]
+  name       = "lemmaInprocess"
+  category   = "expert"
+  long       = "lemma-inprocess=MODE"
+  type       = "LemmaInprocessMode"
+  default    = "NONE"
+  help       = "Modes for inprocessing lemmas."
+  help_mode  = "Modes for inprocessing lemmas."
+[[option.mode.FULL]]
+  name = "full"
+  help = "Full inprocessing."
+[[option.mode.LIGHT]]
+  name = "light"
+  help = "Light inprocessing."
+[[option.mode.NONE]]
+  name = "none"
+  help = "No inprocessing."
+
+[[option]]
+  name       = "lemmaInprocessSubsMode"
+  category   = "expert"
+  long       = "lemma-inprocess-subs=MODE"
+  type       = "LemmaInprocessSubsMode"
+  default    = "SIMPLE"
+  help       = "Modes for substitutions for inprocessing lemmas."
+  help_mode  = "Modes for substitutions for inprocessing lemmas."
+[[option.mode.ALL]]
+  name = "all"
+  help = "All substitutions."
+[[option.mode.SIMPLE]]
+  name = "simple"
+  help = "Simple substitutions."
+
+[[option]]
+  name       = "lemmaInprocessInferEqLit"
+  category   = "expert"
+  long       = "lemma-inprocess-infer-eq-lit"
+  type       = "bool"
+  default    = "false"
+  help       = "Infer equivalent literals when using lemma inprocess"
