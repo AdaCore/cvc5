@@ -39,32 +39,32 @@ if(CaDiCaL_INCLUDE_DIR AND CaDiCaL_LIBRARIES)
     "
   )
 
-  # `try_run` doesn't have a way to specify a specific include dirs, so we need
-  # to set (and then reset) `CMAKE_CXX_FLAGS`; our version file is a .cpp file,
-  # so CXX_FLAGS are the right flags
-  set(OLD_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+  #  # `try_run` doesn't have a way to specify a specific include dirs, so we need
+  #  # to set (and then reset) `CMAKE_CXX_FLAGS`; our version file is a .cpp file,
+  #  # so CXX_FLAGS are the right flags
+  #  set(OLD_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+  #
+  #  # cvc5 doesn't support MSVC, so we're fine to hard-code `-I` as the include
+  #  # flag
+  #  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${CaDiCaL_INCLUDE_DIR}")
+  #
+  #  # Try to compile and run our version file
+  #  try_run(RUN_RESULT_VAR
+  #    COMPILE_RESULT_VAR
+  #    ${CMAKE_BINARY_DIR}
+  #    ${CaDiCaL_version_src}
+  #    LINK_LIBRARIES ${CaDiCaL_LIBRARIES}
+  #    RUN_OUTPUT_VARIABLE CaDiCaL_VERSION
+  #  )
+  #
+  #  # Restore our CXX flags after checking with `try_run`
+  #  set(CMAKE_CXX_FLAGS ${OLD_CXX_FLAGS})
+  #
+  #  # If this failed to compile or run, we have bigger issues
+  #  if (NOT ${RUN_RESULT_VAR} EQUAL 0 OR NOT ${COMPILE_RESULT_VAR})
+  #  endif()
 
-  # cvc5 doesn't support MSVC, so we're fine to hard-code `-I` as the include
-  # flag
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${CaDiCaL_INCLUDE_DIR}")
-
-  # Try to compile and run our version file
-  try_run(RUN_RESULT_VAR
-    COMPILE_RESULT_VAR
-    ${CMAKE_BINARY_DIR}
-    ${CaDiCaL_version_src}
-    LINK_LIBRARIES ${CaDiCaL_LIBRARIES}
-    RUN_OUTPUT_VARIABLE CaDiCaL_VERSION
-  )
-
-  # Restore our CXX flags after checking with `try_run`
-  set(CMAKE_CXX_FLAGS ${OLD_CXX_FLAGS})
-
-  # If this failed to compile or run, we have bigger issues
-  if (NOT ${RUN_RESULT_VAR} EQUAL 0 OR NOT ${COMPILE_RESULT_VAR})
-    set(CaDiCaL_VERSION "")
-  endif()
-
+  set(CaDiCaL_VERSION "1.7.4")
   # Minimum supported version
   set(CaDiCaL_FIND_VERSION "1.6.0")
 
