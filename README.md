@@ -4,7 +4,7 @@ Note
 This repository is NOT the official CVC5 repository. It is a clone of CVC5 for
 its use in [SPARK](https://github.com/adacore/spark2014). Please report any
 issues or pull requests to the [original
-project](https://github.com/CVC5/CVC5).
+project](https://github.com/cvc5/cvc5).
 
 Original README
 
