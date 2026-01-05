@@ -64,7 +64,7 @@ if(CaDiCaL_INCLUDE_DIR AND CaDiCaL_LIBRARIES)
   #  if (NOT ${RUN_RESULT_VAR} EQUAL 0 OR NOT ${COMPILE_RESULT_VAR})
   #  endif()
 
-  set(CaDiCaL_VERSION "1.7.4")
+  set(CaDiCaL_VERSION "2.1.3")
   # Minimum supported version
   set(CaDiCaL_FIND_VERSION "2.1.0")
   # Maximum supported version
