@@ -18,7 +18,7 @@
 
 include(deps-helper)
 
-find_path(CaDiCaL_INCLUDE_DIR NAMES cadical.hpp tracer.hpp NO_CMAKE_FIND_ROOT_PATH)
+find_path(CaDiCaL_INCLUDE_DIR NAMES cadical/cadical.hpp cadical/tracer.hpp NO_CMAKE_FIND_ROOT_PATH)
 find_library(CaDiCaL_LIBRARIES NAMES cadical NO_CMAKE_FIND_ROOT_PATH)
 
 set(CaDiCaL_FOUND_SYSTEM FALSE)
