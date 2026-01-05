@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Tim King, Aina Niemetz, Gereon Kremer
+ *   Tim King, Daniel Larraz, Aina Niemetz
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -240,7 +240,9 @@ public:
      case Kind::INTS_MODULUS_TOTAL:
      case Kind::DIVISION_TOTAL: return isDivMember(n);
      case Kind::IAND:
+     case Kind::PIAND:
      case Kind::POW2:
+     case Kind::INTS_LOG2:
      case Kind::POW:
      case Kind::EXPONENTIAL:
      case Kind::SINE:
@@ -259,6 +261,7 @@ public:
      case Kind::PI:
      case Kind::ABS:
      case Kind::TO_INTEGER:
+     case Kind::NONLINEAR_MULT:
        // All of the above are treated as variables. We assume their arguments
        // are rewritten.
        return true;
@@ -365,48 +368,48 @@ public:
    return Constant(n);
  }
 
-  static Constant mkConstant(const Rational& rat);
+ static Constant mkConstant(NodeManager* nm, const Rational& rat);
 
-  static Constant mkZero() {
-    return mkConstant(Rational(0));
-  }
+ static Constant mkZero(NodeManager* nm) { return mkConstant(nm, Rational(0)); }
 
-  static Constant mkOne() {
-    return mkConstant(Rational(1));
-  }
+ static Constant mkOne(NodeManager* nm) { return mkConstant(nm, Rational(1)); }
 
-  const Rational& getValue() const {
-    return getNode().getConst<Rational>();
-  }
+ const Rational& getValue() const { return getNode().getConst<Rational>(); }
 
-  static int absCmp(const Constant& a, const Constant& b);
-  bool isIntegral() const { return getValue().isIntegral(); }
+ static int absCmp(const Constant& a, const Constant& b);
+ bool isIntegral() const { return getValue().isIntegral(); }
 
-  int sgn() const { return getValue().sgn(); }
+ int sgn() const { return getValue().sgn(); }
 
-  bool isZero() const { return sgn() == 0; }
-  bool isNegative() const { return sgn() < 0; }
-  bool isPositive() const { return sgn() > 0; }
+ bool isZero() const { return sgn() == 0; }
+ bool isNegative() const { return sgn() < 0; }
+ bool isPositive() const { return sgn() > 0; }
 
-  bool isOne() const { return getValue() == 1; }
+ bool isOne() const { return getValue() == 1; }
 
-  Constant operator*(const Rational& other) const {
-    return mkConstant(getValue() * other);
+ Constant operator*(const Rational& other) const
+ {
+   NodeManager* nm = getNode().getNodeManager();
+   return mkConstant(nm, getValue() * other);
   }
 
   Constant operator*(const Constant& other) const {
-    return mkConstant(getValue() * other.getValue());
+    NodeManager* nm = getNode().getNodeManager();
+    return mkConstant(nm, getValue() * other.getValue());
   }
   Constant operator+(const Constant& other) const {
-    return mkConstant(getValue() + other.getValue());
+    NodeManager* nm = getNode().getNodeManager();
+    return mkConstant(nm, getValue() + other.getValue());
   }
   Constant operator-() const {
-    return mkConstant(-getValue());
+    NodeManager* nm = getNode().getNodeManager();
+    return mkConstant(nm, -getValue());
   }
 
   Constant inverse() const{
     Assert(!isZero());
-    return mkConstant(getValue().inverse());
+    NodeManager* nm = getNode().getNodeManager();
+    return mkConstant(nm, getValue().inverse());
   }
 
   bool operator<(const Constant& other) const {
@@ -433,10 +436,13 @@ public:
 
 };/* class Constant */
 
-
 template <class GetNodeIterator>
-inline Node makeNode(Kind k, GetNodeIterator start, GetNodeIterator end) {
-  NodeBuilder nb(k);
+inline Node makeNode(NodeManager* nm,
+                     Kind k,
+                     GetNodeIterator start,
+                     GetNodeIterator end)
+{
+  NodeBuilder nb(nm, k);
 
   while(start != end) {
     nb << (*start).getNode();
@@ -444,7 +450,7 @@ inline Node makeNode(Kind k, GetNodeIterator start, GetNodeIterator end) {
   }
 
   return Node(nb);
-}/* makeNode<GetNodeIterator>(Kind, iterator, iterator) */
+} /* makeNode<GetNodeIterator>(Kind, iterator, iterator) */
 
 /**
  * A VarList is a sorted list of variables representing a product.
@@ -455,12 +461,6 @@ inline Node makeNode(Kind k, GetNodeIterator start, GetNodeIterator end) {
  */
 class VarList : public NodeWrapper {
 private:
-
-  static Node multList(const std::vector<Variable>& list) {
-    Assert(list.size() >= 2);
-
-    return makeNode(Kind::NONLINEAR_MULT, list.begin(), list.end());
-  }
 
   VarList() : NodeWrapper(Node::null()) {}
 
@@ -551,11 +551,6 @@ public:
     Assert(isSorted(begin(), end()));
   }
 
-  VarList(const std::vector<Variable>& l) : NodeWrapper(multList(l)) {
-    Assert(l.size() >= 2);
-    Assert(isSorted(begin(), end()));
-  }
-
   static bool isMember(Node n);
 
   bool isNormalForm() const {
@@ -566,21 +561,9 @@ public:
     return VarList();
   }
 
-
-  /** There are no restrictions on the size of l */
-  static VarList mkVarList(const std::vector<Variable>& l) {
-    if(l.size() == 0) {
-      return mkEmptyVarList();
-    } else if(l.size() == 1) {
-      return VarList((*l.begin()).getNode());
-    } else {
-      return VarList(l);
-    }
-  }
-
   bool empty() const { return getNode().isNull(); }
   bool singleton() const {
-    return !empty() && getNode().getKind() != Kind::NONLINEAR_MULT;
+    return !empty();
   }
 
   int size() const {
@@ -591,8 +574,6 @@ public:
   }
 
   static VarList parseVarList(Node n);
-
-  VarList operator*(const VarList& vl) const;
 
   int cmp(const VarList& vl) const;
 
@@ -634,7 +615,7 @@ private:
     Assert(!c.isZero());
     Assert(!c.isOne());
     Assert(!vl.empty());
-    return NodeManager::currentNM()->mkNode(
+    return NodeManager::mkNode(
         Kind::MULT, c.getNode(), vl.getNode());
   }
 
@@ -646,9 +627,11 @@ private:
   Monomial(const Constant& c):
     NodeWrapper(c.getNode()), constant(c), varList(VarList::mkEmptyVarList())
   { }
-  
-  Monomial(const VarList& vl):
-    NodeWrapper(vl.getNode()), constant(Constant::mkConstant(1)), varList(vl)
+
+  Monomial(const VarList& vl)
+      : NodeWrapper(vl.getNode()),
+        constant(Constant::mkConstant(vl.getNode().getNodeManager(), 1)),
+        varList(vl)
   {
     Assert(!varList.empty());
   }
@@ -669,7 +652,7 @@ public:
   static Monomial mkMonomial(const Constant& c, const VarList& vl);
 
   /** If vl is empty, this make one. */
-  static Monomial mkMonomial(const VarList& vl);
+  static Monomial mkMonomial(NodeManager* nm, const VarList& vl);
 
   static Monomial mkMonomial(const Constant& c){
     return Monomial(c);
@@ -681,11 +664,13 @@ public:
 
   static Monomial parseMonomial(Node n);
 
-  static Monomial mkZero() {
-    return Monomial(Constant::mkConstant(0));
+  static Monomial mkZero(NodeManager* nm)
+  {
+    return Monomial(Constant::mkConstant(nm, 0));
   }
-  static Monomial mkOne() {
-    return Monomial(Constant::mkConstant(1));
+  static Monomial mkOne(NodeManager* nm)
+  {
+    return Monomial(Constant::mkConstant(nm, 1));
   }
   const Constant& getConstant() const { return constant; }
   const VarList& getVarList() const { return varList; }
@@ -712,7 +697,6 @@ public:
 
   Monomial operator*(const Rational& q) const;
   Monomial operator*(const Constant& c) const;
-  Monomial operator*(const Monomial& mono) const;
 
   Monomial operator-() const{
     return (*this) * Rational(-1);
@@ -740,7 +724,8 @@ public:
   }
 
   static void sort(std::vector<Monomial>& m);
-  static void combineAdjacentMonomials(std::vector<Monomial>& m);
+  static void combineAdjacentMonomials(NodeManager* nm,
+                                       std::vector<Monomial>& m);
 
   /**
    * The variable product
@@ -804,7 +789,8 @@ private:
   static Node makePlusNode(const std::vector<Monomial>& m) {
     Assert(m.size() >= 2);
 
-    return makeNode(Kind::ADD, m.begin(), m.end());
+    NodeManager* nm = m[0].getNode().getNodeManager();
+    return makeNode(nm, Kind::ADD, m.begin(), m.end());
   }
 
   typedef expr::NodeSelfIterator internal_iterator;
@@ -900,9 +886,11 @@ public:
     return Polynomial(Monomial::mkMonomial(v));
   }
 
-  static Polynomial mkPolynomial(const std::vector<Monomial>& m) {
+  static Polynomial mkPolynomial(NodeManager* nm,
+                                 const std::vector<Monomial>& m)
+  {
     if(m.size() == 0) {
-      return Polynomial(Monomial::mkZero());
+      return Polynomial(Monomial::mkZero(nm));
     } else if(m.size() == 1) {
       return Polynomial((*m.begin()));
     } else {
@@ -917,11 +905,13 @@ public:
     return Polynomial(n);
   }
 
-  static Polynomial mkZero() {
-    return Polynomial(Monomial::mkZero());
+  static Polynomial mkZero(NodeManager* nm)
+  {
+    return Polynomial(Monomial::mkZero(nm));
   }
-  static Polynomial mkOne() {
-    return Polynomial(Monomial::mkOne());
+  static Polynomial mkOne(NodeManager* nm)
+  {
+    return Polynomial(Monomial::mkOne(nm));
   }
   bool isZero() const {
     return singleton() && (getHead().isZero());
@@ -955,7 +945,7 @@ public:
     ++tailStart;
     std::vector<Monomial> subrange;
     std::copy(tailStart, end(), std::back_inserter(subrange));
-    return mkPolynomial(subrange);
+    return mkPolynomial(getNode().getNodeManager(), subrange);
   }
 
   Monomial minimumVariableMonomial() const;
@@ -994,7 +984,8 @@ public:
     return true;
   }
 
-  static Polynomial sumPolynomials(const std::vector<Polynomial>& polynomials);
+  static Polynomial sumPolynomials(NodeManager* nm,
+                                   const std::vector<Polynomial>& polynomials);
 
   /** Returns true if the polynomial contains a non-linear monomial.*/
   bool isNonlinear() const;
@@ -1057,9 +1048,6 @@ public:
 
   Polynomial operator*(const Rational& q) const;
   Polynomial operator*(const Constant& c) const;
-  Polynomial operator*(const Monomial& mono) const;
-
-  Polynomial operator*(const Polynomial& poly) const;
 
   /**
    * Viewing the integer polynomial as a list [(* coeff_i mono_i)]
@@ -1133,12 +1121,13 @@ public:
   friend class Comparison;
 
   /** Returns a node that if asserted ensures v is the abs of this polynomial.*/
-  Node makeAbsCondition(Variable v){
-    return makeAbsCondition(v, *this);
+  Node makeAbsCondition(NodeManager* nm, Variable v)
+  {
+    return makeAbsCondition(nm, v, *this);
   }
 
   /** Returns a node that if asserted ensures v is the abs of p.*/
-  static Node makeAbsCondition(Variable v, Polynomial p);
+  static Node makeAbsCondition(NodeManager* nm, Variable v, Polynomial p);
 
 };/* class Polynomial */
 
@@ -1157,15 +1146,16 @@ public:
 class SumPair : public NodeWrapper {
 private:
   static Node toNode(const Polynomial& p, const Constant& c){
-    return NodeManager::currentNM()->mkNode(
+    return NodeManager::mkNode(
         Kind::ADD, p.getNode(), c.getNode());
   }
 
   SumPair(TNode n) : NodeWrapper(n) { Assert(isNormalForm()); }
 
  public:
-  SumPair(const Polynomial& p):
-    NodeWrapper(toNode(p, Constant::mkConstant(0)))
+  SumPair(const Polynomial& p)
+      : NodeWrapper(
+          toNode(p, Constant::mkConstant(p.getNode().getNodeManager(), 0)))
   {
     Assert(isNormalForm());
   }
@@ -1218,7 +1208,8 @@ private:
   }
 
   SumPair operator-(const SumPair& other) const {
-    return (*this) + (other * Constant::mkConstant(-1));
+    NodeManager* nm = other.getNode().getNodeManager();
+    return (*this) + (other * Constant::mkConstant(nm, -1));
   }
 
   static SumPair mkSumPair(const Polynomial& p);
@@ -1265,8 +1256,9 @@ private:
     return std::max(getPolynomial().maxLength(), getConstant().length());
   }
 
-  static SumPair mkZero() {
-    return SumPair(Polynomial::mkZero(), Constant::mkConstant(0));
+  static SumPair mkZero(NodeManager* nm)
+  {
+    return SumPair(Polynomial::mkZero(nm), Constant::mkConstant(nm, 0));
   }
 
   static Node computeQR(const SumPair& sp, const Integer& div);
@@ -1342,7 +1334,7 @@ private:
    * Creates a node in normal form equivalent to (= l 0).
    * All variables in l are integral.
    */
-  static Node mkIntEquality(const Polynomial& l);
+  static Node mkIntEquality(NodeManager* nm, const Polynomial& l);
 
   /**
    * Creates a comparison equivalent to (k l 0).
@@ -1365,36 +1357,36 @@ private:
   static Node mkRatInequality(Kind k, const Polynomial& l);
 
 public:
+ Comparison(NodeManager* nm, bool val) : NodeWrapper(nm->mkConst(val)) {}
 
-  Comparison(bool val) :
-    NodeWrapper(NodeManager::currentNM()->mkConst(val))
-  { }
+ /**
+  * Given a literal to TheoryArith return a single kind to
+  * to indicate its underlying structure.
+  * The function returns the following in each case:
+  * - (K left right)           -> K where is either EQUAL, GT, or GEQ
+  * - (CONST_BOOLEAN b)        -> CONST_BOOLEAN
+  * - (NOT (EQUAL left right)) -> DISTINCT
+  * - (NOT (GT left right))    -> LEQ
+  * - (NOT (GEQ left right))   -> LT
+  * If none of these match, it returns UNDEFINED_KIND.
+  */
+ static Kind comparisonKind(TNode literal);
 
-  /**
-   * Given a literal to TheoryArith return a single kind to
-   * to indicate its underlying structure.
-   * The function returns the following in each case:
-   * - (K left right)           -> K where is either EQUAL, GT, or GEQ
-   * - (CONST_BOOLEAN b)        -> CONST_BOOLEAN
-   * - (NOT (EQUAL left right)) -> DISTINCT
-   * - (NOT (GT left right))    -> LEQ
-   * - (NOT (GEQ left right))   -> LT
-   * If none of these match, it returns UNDEFINED_KIND.
-   */
-  static Kind comparisonKind(TNode literal);
+ Kind comparisonKind() const { return comparisonKind(getNode()); }
 
-  Kind comparisonKind() const { return comparisonKind(getNode()); }
+ static Comparison mkComparison(NodeManager* nm,
+                                Kind k,
+                                const Polynomial& l,
+                                const Polynomial& r);
 
-  static Comparison mkComparison(Kind k, const Polynomial& l, const Polynomial& r);
+ /** Returns true if the comparison is a boolean constant. */
+ bool isBoolean() const;
 
-  /** Returns true if the comparison is a boolean constant. */
-  bool isBoolean() const;
-
-  /**
-   * Returns true if the comparison is either a boolean term,
-   * in integer normal form or mixed normal form.
-   */
-  bool isNormalForm() const;
+ /**
+  * Returns true if the comparison is either a boolean term,
+  * in integer normal form or mixed normal form.
+  */
+ bool isNormalForm() const;
 
 private:
   bool isNormalGT() const;

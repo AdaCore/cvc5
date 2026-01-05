@@ -4,7 +4,7 @@
 #
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -36,7 +36,7 @@ def test_get_kind(tm):
 
 
 def test_is_null(tm):
-    x = Op(tm)
+    x = Op()
     assert x.isNull()
     y = tm.mkOp(Kind.BITVECTOR_EXTRACT, 31, 1)
     assert not y.isNull()

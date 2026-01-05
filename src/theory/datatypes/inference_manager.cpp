@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Andrew Reynolds, Gereon Kremer, Aina Niemetz
+ *   Andrew Reynolds, Gereon Kremer, Mathias Preiner
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -77,16 +77,15 @@ void InferenceManager::process()
   doPendingFacts();
 }
 
-void InferenceManager::sendDtLemma(Node lem, InferenceId id, LemmaProperty p)
+bool InferenceManager::sendDtLemma(Node lem, InferenceId id, LemmaProperty p)
 {
   if (isProofEnabled())
   {
     TrustNode trn = processDtLemma(lem, Node::null(), id);
-    trustedLemma(trn, id);
-    return;
+    return trustedLemma(trn, id);
   }
   // otherwise send as a normal lemma directly
-  lemma(lem, id, p);
+  return lemma(lem, id, p);
 }
 
 void InferenceManager::sendDtConflict(const std::vector<Node>& conf, InferenceId id)
@@ -150,11 +149,6 @@ Node InferenceManager::prepareDtInference(Node conc,
 {
   Trace("dt-lemma-debug") << "prepareDtInference : " << conc << " via " << exp
                           << " by " << id << std::endl;
-  if (conc.getKind() == Kind::EQUAL && conc[0].getType().isBoolean())
-  {
-    // must turn (= conc false) into (not conc)
-    conc = rewrite(conc);
-  }
   if (isProofEnabled())
   {
     Assert(ipc != nullptr);

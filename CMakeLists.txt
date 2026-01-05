@@ -4,7 +4,7 @@
 #
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -26,7 +26,13 @@ set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 include(version)
 
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+if (WASM STREQUAL "OFF")
+  set(CMAKE_C_EXTENSIONS OFF)
+else()
+  set(CMAKE_C_EXTENSIONS ON)
+endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -93,10 +99,10 @@ cvc5_option(ENABLE_ASAN           "Enable ASAN build")
 cvc5_option(ENABLE_UBSAN          "Enable UBSan build")
 cvc5_option(ENABLE_TSAN           "Enable TSan build")
 cvc5_option(ENABLE_ASSERTIONS     "Enable assertions")
-cvc5_option(ENABLE_COMP_INC_TRACK
-            "Enable optimizations for incremental SMT-COMP tracks")
 cvc5_option(ENABLE_DEBUG_SYMBOLS  "Enable debug symbols")
 cvc5_option(ENABLE_MUZZLE         "Suppress ALL non-result output")
+cvc5_option(ENABLE_SAFE_MODE      "Enable safe mode")
+cvc5_option(ENABLE_STABLE_MODE    "Enable stable mode")
 cvc5_option(ENABLE_STATISTICS     "Enable statistics")
 cvc5_option(ENABLE_TRACING        "Enable tracing")
 cvc5_option(ENABLE_UNIT_TESTING   "Enable unit testing")
@@ -112,6 +118,8 @@ cvc5_set_option(USE_PYTHON_VENV ON)
 option(ENABLE_COVERAGE         "Enable support for gcov coverage testing")
 option(ENABLE_DEBUG_CONTEXT_MM "Enable the debug context memory manager")
 option(ENABLE_PROFILING        "Enable support for gprof profiling")
+
+option(TREAT_WARNING_AS_ERROR  "Treat warnings on building as errors")
 
 # Optional dependencies
 #
@@ -420,34 +428,29 @@ macro(create_venv)
   endif()
 endmacro()
 
-if(ENABLE_AUTO_DOWNLOAD AND USE_PYTHON_VENV)
-  # Set up Python venv if one doesn't exist already
-  set(VENV_PATH "${CMAKE_BINARY_DIR}/venv-${Python_VERSION}")
-  if(NOT EXISTS ${VENV_PATH})
-    find_package(Pip REQUIRED)
-    create_venv()
-  else()
-    if(NOT (EXISTS ${VENV_PATH}/bin/pip OR EXISTS ${VENV_PATH}/Scripts/pip.exe))
-      # This situation may be possible if cvc5 was built before 715f649
-      execute_process(COMMAND ${CMAKE_COMMAND} -E remove_directory ${VENV_PATH})
-      find_package(Pip REQUIRED)
+if(ENABLE_AUTO_DOWNLOAD)
+  if(USE_PYTHON_VENV)
+    # Set up Python venv if one doesn't exist already
+    set(VENV_PATH "${CMAKE_BINARY_DIR}/venv-${Python_VERSION}")
+    if(NOT EXISTS ${VENV_PATH})
       create_venv()
     endif()
-  endif()
 
-  # Set up variables to find Python within the virtual environment
-  set(ENV{VIRTUAL_ENV} "${VENV_PATH}")
-  unset(Python_EXECUTABLE CACHE)
-  if(EXISTS ${VENV_PATH}/bin/python3)
-    set(Python_EXECUTABLE ${VENV_PATH}/bin/python3)
-  elseif(EXISTS ${VENV_PATH}/Scripts/python.exe)
-    set(Python_EXECUTABLE ${VENV_PATH}/Scripts/python.exe)
-  else()
-    message(FATAL_ERROR "Could not find Python interpreter in venv")
-  endif()
+    # Set up variables to find Python within the virtual environment
+    set(ENV{VIRTUAL_ENV} "${VENV_PATH}")
+    unset(Python_EXECUTABLE CACHE)
+    if(EXISTS ${VENV_PATH}/bin/python3)
+      set(Python_EXECUTABLE ${VENV_PATH}/bin/python3)
+    elseif(EXISTS ${VENV_PATH}/Scripts/python.exe)
+      set(Python_EXECUTABLE ${VENV_PATH}/Scripts/python.exe)
+    else()
+      message(FATAL_ERROR "Could not find Python interpreter in venv")
+    endif()
 
-  # Find the Python interpreter within the virtual environment
-  find_package(Python COMPONENTS Interpreter REQUIRED)
+    # Find the Python interpreter within the virtual environment
+    find_package(Python COMPONENTS Interpreter REQUIRED)
+  endif()
+  find_package(Pip REQUIRED)
 endif()
 
 find_package(GMP 6.3 REQUIRED)
@@ -504,10 +507,6 @@ if(ENABLE_DEBUG_SYMBOLS)
   endif()
 endif()
 
-if(ENABLE_COMP_INC_TRACK)
-  add_definitions(-DCVC5_SMTCOMP_APPLICATION_TRACK)
-endif()
-
 if(ENABLE_MUZZLE)
   add_definitions(-DCVC5_MUZZLE)
 endif()
@@ -519,6 +518,14 @@ endif()
 
 if(ENABLE_TRACING)
   add_definitions(-DCVC5_TRACING)
+endif()
+
+if(ENABLE_SAFE_MODE)
+  add_definitions(-DCVC5_SAFE_MODE)
+endif()
+
+if(ENABLE_STABLE_MODE)
+  add_definitions(-DCVC5_STABLE_MODE)
 endif()
 
 if(ENABLE_STATISTICS)
@@ -546,7 +553,7 @@ if(USE_CRYPTOMINISAT)
   # CryptoMiniSat requires pthreads support
   set(THREADS_PREFER_PTHREAD_FLAG ON)
   find_package(Threads REQUIRED)
-  find_package(CryptoMiniSat 5.8 REQUIRED)
+  find_package(CryptoMiniSat 5.11.2 REQUIRED)
   add_definitions(-DCVC5_USE_CRYPTOMINISAT)
 endif()
 
@@ -561,8 +568,22 @@ if(USE_KISSAT)
   add_definitions(-DCVC5_USE_KISSAT)
 endif()
 
+# disable libraries that cannot be used in safe mode
+if(ENABLE_SAFE_MODE)
+  if(USE_POLY)
+    set(USE_POLY OFF)
+    message(WARNING
+      "LibPoly disabled due to safe mode")
+  endif()
+  if(USE_COCOA)
+    set(USE_COCOA OFF)
+    message(WARNING
+      "Cocoa disabled due to safe mode")
+  endif()
+endif()
+
 if(USE_POLY)
-  find_package(Poly 0.1.13 REQUIRED)
+  find_package(Poly 0.2.0 REQUIRED)
   add_definitions(-DCVC5_USE_POLY)
   set(CVC5_USE_POLY_IMP 1)
 else()
@@ -745,8 +766,10 @@ string(REPLACE ";" " " CVC5_DEFINITIONS "${CVC5_DEFINITIONS}")
 message("")
 print_info("cvc5 ${CVC5_VERSION}")
 message("")
-if(ENABLE_COMP_INC_TRACK)
-  print_config("Build profile             " "${CVC5_BUILD_PROFILE_STRING} (incremental)")
+if (ENABLE_SAFE_MODE)
+  print_config("Build profile             " "${CVC5_BUILD_PROFILE_STRING} (safe mode)")
+elseif (ENABLE_STABLE_MODE)
+  print_config("Build profile             " "${CVC5_BUILD_PROFILE_STRING} (stable mode)")
 else()
   print_config("Build profile             " "${CVC5_BUILD_PROFILE_STRING}")
 endif()

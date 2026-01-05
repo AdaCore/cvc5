@@ -1,10 +1,10 @@
 /******************************************************************************
  * Top contributors (to current version):
- *   Tim King, Aina Niemetz, Gereon Kremer
+ *   Tim King, Aina Niemetz, Daniel Larraz
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -29,9 +29,8 @@ namespace cvc5::internal {
 namespace theory {
 namespace arith::linear {
 
-Constant Constant::mkConstant(const Rational& rat)
+Constant Constant::mkConstant(NodeManager* nm, const Rational& rat)
 {
-  NodeManager* nm = NodeManager::currentNM();
   return Constant(nm->mkConstRealOrInt(rat));
 }
 
@@ -72,32 +71,7 @@ bool VarList::isSorted(iterator start, iterator end) {
 }
 
 bool VarList::isMember(Node n) {
-  if(Variable::isMember(n)) {
-    return true;
-  }
-  if (n.getKind() == Kind::NONLINEAR_MULT)
-  {
-    Node::iterator curr = n.begin(), end = n.end();
-    Node prev = *curr;
-    if(!Variable::isMember(prev)) return false;
-
-    Variable::VariableNodeCmp cmp;
-
-    while( (++curr) != end) {
-      if(!Variable::isMember(*curr)) return false;
-      // prev <= curr : accept
-      // !(prev <= curr) : reject
-      // !(!(prev > curr)) : reject
-      // curr < prev : reject
-      if((cmp(*curr, prev))) return false;
-      prev = *curr;
-    }
-    return true;
-  }
-  else
-  {
-    return false;
-  }
+  return Variable::isMember(n);
 }
 
 int VarList::cmp(const VarList& vl) const {
@@ -145,29 +119,6 @@ VarList VarList::parseVarList(Node n) {
   // }
 }
 
-VarList VarList::operator*(const VarList& other) const {
-  if(this->empty()) {
-    return other;
-  } else if(other.empty()) {
-    return *this;
-  } else {
-    vector<Node> result;
-
-    internal_iterator
-      thisBegin = this->internalBegin(),
-      thisEnd = this->internalEnd(),
-      otherBegin = other.internalBegin(),
-      otherEnd = other.internalEnd();
-
-    Variable::VariableNodeCmp cmp;
-    std::merge(thisBegin, thisEnd, otherBegin, otherEnd, std::back_inserter(result), cmp);
-
-    Assert(result.size() >= 2);
-    Node mult = NodeManager::currentNM()->mkNode(Kind::NONLINEAR_MULT, result);
-    return VarList::parseVarList(mult);
-  }
-}
-
 bool Monomial::isMember(TNode n){
   Kind k = n.getKind();
   if (k == Kind::CONST_RATIONAL || k == Kind::CONST_INTEGER)
@@ -191,10 +142,11 @@ Monomial Monomial::mkMonomial(const Constant& c, const VarList& vl) {
   }
 }
 
-Monomial Monomial::mkMonomial(const VarList& vl) {
+Monomial Monomial::mkMonomial(NodeManager* nm, const VarList& vl)
+{
   // acts like Monomial::mkMonomial( 1, vl)
   if( vl.empty() ) {
-    return Monomial::mkOne();
+    return Monomial::mkOne(nm);
   } else if(true){
     return Monomial(vl);
   }
@@ -214,7 +166,7 @@ Monomial Monomial::parseMonomial(Node n) {
 }
 Monomial Monomial::operator*(const Rational& q) const {
   if(q.isZero()){
-    return mkZero();
+    return mkZero(getNode().getNodeManager());
   }else{
     Constant newConstant = this->getConstant() * q;
     return Monomial::mkMonomial(newConstant, getVarList());
@@ -229,13 +181,6 @@ Monomial Monomial::operator*(const Constant& c) const {
   //   Constant newConstant = this->getConstant() * c;
   //   return Monomial::mkMonomial(newConstant, getVarList());
   // }
-}
-
-Monomial Monomial::operator*(const Monomial& mono) const {
-  Constant newConstant = this->getConstant() * mono.getConstant();
-  VarList newVL = this->getVarList() * mono.getVarList();
-
-  return Monomial::mkMonomial(newConstant, newVL);
 }
 
 // vector<Monomial> Monomial::sumLikeTerms(const std::vector<Monomial> & monos)
@@ -269,7 +214,9 @@ void Monomial::sort(std::vector<Monomial>& m){
   }
 }
 
-void Monomial::combineAdjacentMonomials(std::vector<Monomial>& monos) {
+void Monomial::combineAdjacentMonomials(NodeManager* nm,
+                                        std::vector<Monomial>& monos)
+{
   Assert(isSorted(monos));
   size_t writePos, readPos, N;
   for(writePos = 0, readPos = 0, N = monos.size(); readPos < N;){
@@ -293,7 +240,7 @@ void Monomial::combineAdjacentMonomials(std::vector<Monomial>& monos) {
         constant += monos[i].getConstant().getValue();
       }
       if(!constant.isZero()){
-        Constant asConstant = Constant::mkConstant(constant);
+        Constant asConstant = Constant::mkConstant(nm, constant);
         Monomial nonZero = Monomial::mkMonomial(asConstant, varList);
         monos[writePos] = nonZero;
         writePos++;
@@ -323,32 +270,36 @@ void Monomial::printList(const std::vector<Monomial>& list) {
   }
 }
 Polynomial Polynomial::operator+(const Polynomial& vl) const {
+  NodeManager* nm = getNode().getNodeManager();
 
   std::vector<Monomial> sortedMonos;
   std::merge(begin(), end(), vl.begin(), vl.end(), std::back_inserter(sortedMonos));
 
-  Monomial::combineAdjacentMonomials(sortedMonos);
+  Monomial::combineAdjacentMonomials(nm, sortedMonos);
   //std::vector<Monomial> combined = Monomial::sumLikeTerms(sortedMonos);
 
-  Polynomial result = mkPolynomial(sortedMonos);
+  Polynomial result = mkPolynomial(nm, sortedMonos);
   return result;
 }
 
 Polynomial Polynomial::exactDivide(const Integer& z) const {
   Assert(isIntegral());
+  NodeManager* nm = getNode().getNodeManager();
   if(z.isOne()){
     return (*this);
   }else {
-    Constant invz = Constant::mkConstant(Rational(1,z));
-    Polynomial prod = (*this) * Monomial::mkMonomial(invz);
+    Constant invz = Constant::mkConstant(nm, Rational(1, z));
+    Polynomial prod = (*this) * invz;
     Assert(prod.isIntegral());
     return prod;
   }
 }
 
-Polynomial Polynomial::sumPolynomials(const std::vector<Polynomial>& ps){
+Polynomial Polynomial::sumPolynomials(NodeManager* nm,
+                                      const std::vector<Polynomial>& ps)
+{
   if(ps.empty()){
-    return mkZero();
+    return mkZero(nm);
   }else if(ps.size() <= 4){
     // if there are few enough polynomials just add them
     Polynomial p = ps[0];
@@ -370,29 +321,31 @@ Polynomial Polynomial::sumPolynomials(const std::vector<Polynomial>& ps){
     std::map<Node, Rational>::const_iterator ci = coeffs.begin(), cend = coeffs.end();
     for(; ci != cend; ++ci){
       if(!(*ci).second.isZero()){
-        Constant c = Constant::mkConstant((*ci).second);
+        Constant c = Constant::mkConstant(nm, (*ci).second);
         Node n = (*ci).first;
         VarList vl = VarList::parseVarList(n);
         monos.push_back(Monomial::mkMonomial(c, vl));
       }
     }
     Monomial::sort(monos);
-    Monomial::combineAdjacentMonomials(monos);
+    Monomial::combineAdjacentMonomials(nm, monos);
 
-    Polynomial result = mkPolynomial(monos);
+    Polynomial result = mkPolynomial(nm, monos);
     return result;
   }
 }
 
 Polynomial Polynomial::operator-(const Polynomial& vl) const {
-  Constant negOne = Constant::mkConstant(Rational(-1));
+  NodeManager* nm = getNode().getNodeManager();
+  Constant negOne = Constant::mkConstant(nm, Rational(-1));
 
   return *this + (vl*negOne);
 }
 
 Polynomial Polynomial::operator*(const Rational& q) const{
+  NodeManager* nm = getNode().getNodeManager();
   if(q.isZero()){
-    return Polynomial::mkZero();
+    return Polynomial::mkZero(nm);
   }else if(q.isOne()){
     return *this;
   }else{
@@ -402,7 +355,7 @@ Polynomial Polynomial::operator*(const Rational& q) const{
     }
 
     Assert(Monomial::isStrictlySorted(newMonos));
-    return Polynomial::mkPolynomial(newMonos);
+    return Polynomial::mkPolynomial(nm, newMonos);
   }
 }
 
@@ -421,35 +374,6 @@ Polynomial Polynomial::operator*(const Constant& c) const{
   //   Assert(Monomial::isStrictlySorted(newMonos));
   //   return Polynomial::mkPolynomial(newMonos);
   // }
-}
-
-Polynomial Polynomial::operator*(const Monomial& mono) const {
-  if(mono.isZero()) {
-    return Polynomial(mono); //Don't multiply by zero
-  } else {
-    std::vector<Monomial> newMonos;
-    for(iterator i = this->begin(), end = this->end(); i != end; ++i) {
-      newMonos.push_back(mono * (*i));
-    }
-
-    // We may need to sort newMonos.
-    // Suppose this = (+ x y), mono = x, (* x y).getId() < (* x x).getId()
-    // newMonos = <(* x x), (* x y)> after this loop.
-    // This is not sorted according to the current VarList order.
-    Monomial::sort(newMonos);
-    return Polynomial::mkPolynomial(newMonos);
-  }
-}
-
-Polynomial Polynomial::operator*(const Polynomial& poly) const {
-  Polynomial res = Polynomial::mkZero();
-  for(iterator i = this->begin(), end = this->end(); i != end; ++i) {
-    Monomial curr = *i;
-    Polynomial prod = poly * curr;
-    Polynomial sum  = res + prod;
-    res = sum;
-  }
-  return res;
 }
 
 Monomial Polynomial::selectAbsMinimum() const {
@@ -518,6 +442,7 @@ Integer Polynomial::denominatorLCM() const {
 }
 
 Constant Polynomial::getCoefficient(const VarList& vl) const{
+  NodeManager* nm = getNode().getNodeManager();
   //TODO improve to binary search...
   for(iterator iter=begin(), myend=end(); iter != myend; ++iter){
     Monomial m = *iter;
@@ -526,11 +451,12 @@ Constant Polynomial::getCoefficient(const VarList& vl) const{
       return m.getConstant();
     }
   }
-  return Constant::mkConstant(0);
+  return Constant::mkConstant(nm, 0);
 }
 
 Node Polynomial::computeQR(const Polynomial& p, const Integer& div){
   Assert(p.isIntegral());
+  NodeManager* nm = p.getNode().getNodeManager();
   std::vector<Monomial> q_vec, r_vec;
   Integer tmp_q, tmp_r;
   for(iterator iter = p.begin(), pend = p.end(); iter != pend; ++iter){
@@ -540,8 +466,8 @@ Node Polynomial::computeQR(const Polynomial& p, const Integer& div){
 
     const Integer& a = c.getValue().getNumerator();
     Integer::floorQR(tmp_q, tmp_r, a, div);
-    Constant q=Constant::mkConstant(tmp_q);
-    Constant r=Constant::mkConstant(tmp_r);
+    Constant q = Constant::mkConstant(nm, tmp_q);
+    Constant r = Constant::mkConstant(nm, tmp_r);
     if(!q.isZero()){
       q_vec.push_back(Monomial::mkMonomial(q, vl));
     }
@@ -550,11 +476,10 @@ Node Polynomial::computeQR(const Polynomial& p, const Integer& div){
     }
   }
 
-  Polynomial p_q = Polynomial::mkPolynomial(q_vec);
-  Polynomial p_r = Polynomial::mkPolynomial(r_vec);
+  Polynomial p_q = Polynomial::mkPolynomial(nm, q_vec);
+  Polynomial p_r = Polynomial::mkPolynomial(nm, r_vec);
 
-  return NodeManager::currentNM()->mkNode(
-      Kind::ADD, p_q.getNode(), p_r.getNode());
+  return NodeManager::mkNode(Kind::ADD, p_q.getNode(), p_r.getNode());
 }
 
 
@@ -632,25 +557,27 @@ Node SumPair::computeQR(const SumPair& sp, const Integer& div){
   Assert(p_qr.getKind() == Kind::ADD);
   Assert(p_qr.getNumChildren() == 2);
 
+  NodeManager* nm = p_qr.getNodeManager();
+
   Polynomial p_q = Polynomial::parsePolynomial(p_qr[0]);
   Polynomial p_r = Polynomial::parsePolynomial(p_qr[1]);
 
-  SumPair sp_q(p_q, Constant::mkConstant(constant_q));
-  SumPair sp_r(p_r, Constant::mkConstant(constant_r));
+  SumPair sp_q(p_q, Constant::mkConstant(nm, constant_q));
+  SumPair sp_r(p_r, Constant::mkConstant(nm, constant_r));
 
-  return NodeManager::currentNM()->mkNode(
-      Kind::ADD, sp_q.getNode(), sp_r.getNode());
+  return NodeManager::mkNode(Kind::ADD, sp_q.getNode(), sp_r.getNode());
 }
 
 SumPair SumPair::mkSumPair(const Polynomial& p){
+  NodeManager* nm = p.getNode().getNodeManager();
   if(p.isConstant()){
     Constant leadingConstant = p.getHead().getConstant();
-    return SumPair(Polynomial::mkZero(), leadingConstant);
+    return SumPair(Polynomial::mkZero(nm), leadingConstant);
   }else if(p.containsConstant()){
     Assert(!p.singleton());
     return SumPair(p.getTail(), p.getHead().getConstant());
   }else{
-    return SumPair(p, Constant::mkZero());
+    return SumPair(p, Constant::mkZero(nm));
   }
 }
 
@@ -660,6 +587,7 @@ Comparison::Comparison(TNode n) : NodeWrapper(n)
 }
 
 SumPair Comparison::toSumPair() const {
+  NodeManager* nm = getNode().getNodeManager();
   Kind cmpKind = comparisonKind();
   switch(cmpKind){
     case Kind::LT:
@@ -692,7 +620,7 @@ SumPair Comparison::toSumPair() const {
         Polynomial noConstant = right.getTail();
         return SumPair(left - noConstant, -right.getHead().getConstant());
       }else{
-        return SumPair(left - right, Constant::mkZero());
+        return SumPair(left - right, Constant::mkZero(nm));
       }
     }
     default: Unhandled() << cmpKind;
@@ -789,6 +717,7 @@ DeltaRational Comparison::normalizedDeltaRational() const {
 std::tuple<Polynomial, Kind, Constant> Comparison::decompose(
     bool split_constant) const
 {
+  NodeManager* nm = getNode().getNodeManager();
   Kind rel = getNode().getKind();
   if (rel == Kind::NOT)
   {
@@ -810,10 +739,10 @@ std::tuple<Polynomial, Kind, Constant> Comparison::decompose(
   if (!split_constant)
   {
     return std::tuple<Polynomial, Kind, Constant>{
-        poly, rel, Constant::mkZero()};
+        poly, rel, Constant::mkZero(nm)};
   }
 
-  Constant right = Constant::mkZero();
+  Constant right = Constant::mkZero(nm);
   if (poly.containsConstant())
   {
     right = -poly.getHead().getConstant();
@@ -855,8 +784,7 @@ Node Comparison::toNode(Kind k, const Polynomial& l, const Constant& r) {
   Assert(isRelationOperator(k));
   switch(k) {
     case Kind::GEQ:
-    case Kind::GT:
-      return NodeManager::currentNM()->mkNode(k, l.getNode(), r.getNode());
+    case Kind::GT: return NodeManager::mkNode(k, l.getNode(), r.getNode());
     default: Unhandled() << k;
   }
 }
@@ -866,8 +794,7 @@ Node Comparison::toNode(Kind k, const Polynomial& l, const Polynomial& r) {
   switch(k) {
     case Kind::GEQ:
     case Kind::EQUAL:
-    case Kind::GT:
-      return NodeManager::currentNM()->mkNode(k, l.getNode(), r.getNode());
+    case Kind::GT: return NodeManager::mkNode(k, l.getNode(), r.getNode());
     case Kind::LEQ: return toNode(Kind::GEQ, r, l).notNode();
     case Kind::LT: return toNode(Kind::GT, r, l).notNode();
     case Kind::DISTINCT: return toNode(Kind::EQUAL, r, l).notNode();
@@ -1131,11 +1058,13 @@ Node Comparison::mkRatEquality(const Polynomial& p){
   Assert(!p.isConstant());
   Assert(!p.allIntegralVariables());
 
+  NodeManager* nm = p.getNode().getNodeManager();
+
   Monomial minimalVList = p.minimumVariableMonomial();
   Constant coeffInv = -(minimalVList.getConstant().inverse());
 
   Polynomial newRight = (p - minimalVList) * coeffInv;
-  Polynomial newLeft(Monomial::mkMonomial(minimalVList.getVarList()));
+  Polynomial newLeft(Monomial::mkMonomial(nm, minimalVList.getVarList()));
 
   return toNode(Kind::EQUAL, newLeft, newRight);
 }
@@ -1163,6 +1092,8 @@ Node Comparison::mkIntInequality(Kind k, const Polynomial& p){
   Assert(Kind::GT == k || Kind::GEQ == k);
   Assert(!p.isConstant());
   Assert(p.allIntegralVariables());
+
+  NodeManager* nm = p.getNode().getNodeManager();
 
   SumPair sp = SumPair::mkSumPair(p);
   Polynomial left = sp.getPolynomial();
@@ -1200,12 +1131,12 @@ Node Comparison::mkIntInequality(Kind k, const Polynomial& p){
     {
       // (> p z)
       // (>= p (+ z 1))
-      Constant rightMultPlusOne = Constant::mkConstant(rightMult + 1);
+      Constant rightMultPlusOne = Constant::mkConstant(nm, rightMult + 1);
       result = toNode(Kind::GEQ, newLeft, rightMultPlusOne);
     }
     else
     {
-      Constant newRight = Constant::mkConstant(rightMult);
+      Constant newRight = Constant::mkConstant(nm, rightMult);
       result = toNode(Kind::GEQ, newLeft, newRight);
     }
   }else{
@@ -1213,7 +1144,7 @@ Node Comparison::mkIntInequality(Kind k, const Polynomial& p){
     //(>= l (ceil (/ n d)))
     //This also hold for GT as (ceil (/ n d)) > (/ n d)
     Integer ceilr = rightMult.ceiling();
-    Constant ceilRight = Constant::mkConstant(ceilr);
+    Constant ceilRight = Constant::mkConstant(nm, ceilr);
     result = toNode(Kind::GEQ, newLeft, ceilRight);
   }
   Assert(!result.isNull());
@@ -1224,7 +1155,8 @@ Node Comparison::mkIntInequality(Kind k, const Polynomial& p){
   }
 }
 
-Node Comparison::mkIntEquality(const Polynomial& p){
+Node Comparison::mkIntEquality(NodeManager* nm, const Polynomial& p)
+{
   Assert(!p.isConstant());
   Assert(p.allIntegralVariables());
 
@@ -1234,7 +1166,7 @@ Node Comparison::mkIntEquality(const Polynomial& p){
 
   Integer lcm = varPart.denominatorLCM();
   Integer g = varPart.numeratorGCD();
-  Constant mult = Constant::mkConstant(Rational(lcm,g));
+  Constant mult = Constant::mkConstant(nm, Rational(lcm, g));
 
   Constant constMult = constPart * mult;
 
@@ -1253,12 +1185,15 @@ Node Comparison::mkIntEquality(const Polynomial& p){
     Assert(newRight.isIntegral());
     return toNode(Kind::EQUAL, newLeft, newRight);
   }else{
-    return mkBoolNode(false);
+    return mkBoolNode(nm, false);
   }
 }
 
-Comparison Comparison::mkComparison(Kind k, const Polynomial& l, const Polynomial& r){
-
+Comparison Comparison::mkComparison(NodeManager* nm,
+                                    Kind k,
+                                    const Polynomial& l,
+                                    const Polynomial& r)
+{
   //Make this special case fast for sharing!
   if ((k == Kind::EQUAL || k == Kind::DISTINCT) && l.isVarList()
       && r.isVarList())
@@ -1268,7 +1203,7 @@ Comparison Comparison::mkComparison(Kind k, const Polynomial& l, const Polynomia
 
     if(vLeft == vRight){
       // return true for equalities and false for disequalities
-      return Comparison(k == Kind::EQUAL);
+      return Comparison(nm, k == Kind::EQUAL);
     }else{
       Node eqNode = vLeft < vRight ? toNode(Kind::EQUAL, l, r)
                                    : toNode(Kind::EQUAL, r, l);
@@ -1281,17 +1216,17 @@ Comparison Comparison::mkComparison(Kind k, const Polynomial& l, const Polynomia
   Polynomial diff = l - r;
   if(diff.isConstant()){
     bool res = evaluateConstantPredicate(k, diff.asConstant(), Rational(0));
-    return Comparison(res);
+    return Comparison(nm, res);
   }else{
     Node result = Node::null();
     bool isInteger = diff.allIntegralVariables();
     switch(k){
       case Kind::EQUAL:
-        result = isInteger ? mkIntEquality(diff) : mkRatEquality(diff);
+        result = isInteger ? mkIntEquality(nm, diff) : mkRatEquality(diff);
         break;
       case Kind::DISTINCT:
       {
-        Node eq = isInteger ? mkIntEquality(diff) : mkRatEquality(diff);
+        Node eq = isInteger ? mkIntEquality(nm, diff) : mkRatEquality(diff);
         result = eq.notNode();
       }
       break;
@@ -1315,7 +1250,7 @@ Comparison Comparison::mkComparison(Kind k, const Polynomial& l, const Polynomia
     if (result.getKind() == Kind::NOT
         && result[0].getKind() == Kind::CONST_BOOLEAN)
     {
-      return Comparison(!(result[0].getConst<bool>()));
+      return Comparison(nm, !(result[0].getConst<bool>()));
     }
     else
     {
@@ -1357,14 +1292,14 @@ Kind Comparison::comparisonKind(TNode literal){
   }
 }
 
-
-Node Polynomial::makeAbsCondition(Variable v, Polynomial p){
-  Polynomial zerop = Polynomial::mkZero();
+Node Polynomial::makeAbsCondition(NodeManager* nm, Variable v, Polynomial p)
+{
+  Polynomial zerop = Polynomial::mkZero(nm);
 
   Polynomial varp = Polynomial::mkPolynomial(v);
-  Comparison pLeq0 = Comparison::mkComparison(Kind::LEQ, p, zerop);
-  Comparison negP = Comparison::mkComparison(Kind::EQUAL, varp, -p);
-  Comparison posP = Comparison::mkComparison(Kind::EQUAL, varp, p);
+  Comparison pLeq0 = Comparison::mkComparison(nm, Kind::LEQ, p, zerop);
+  Comparison negP = Comparison::mkComparison(nm, Kind::EQUAL, varp, -p);
+  Comparison posP = Comparison::mkComparison(nm, Kind::EQUAL, varp, p);
 
   Node absCnd = (pLeq0.getNode()).iteNode(negP.getNode(), posP.getNode());
   return absCnd;

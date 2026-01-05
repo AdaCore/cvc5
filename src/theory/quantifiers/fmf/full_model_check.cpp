@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -224,7 +224,8 @@ void Def::basic_simplify( FirstOrderModelFmc * m ) {
   d_status.clear();
 }
 
-void Def::simplify(FullModelChecker * mc, FirstOrderModelFmc * m) {
+void Def::simplify(NodeManager* nm, FullModelChecker* mc, FirstOrderModelFmc* m)
+{
   Trace("fmc-simplify") << "Simplify definition, #cond = " << d_cond.size() << std::endl;
   basic_simplify( m );
   Trace("fmc-simplify") << "post-basic simplify, #cond = " << d_cond.size() << std::endl;
@@ -263,8 +264,7 @@ void Def::simplify(FullModelChecker * mc, FirstOrderModelFmc * m) {
       for( unsigned j=0; j< cc.getNumChildren(); j++){
         nc.push_back(m->getStar(cc[j].getType()));
       }
-      cond[cond.size() - 1] =
-          NodeManager::currentNM()->mkNode(Kind::APPLY_UF, nc);
+      cond[cond.size() - 1] = nm->mkNode(Kind::APPLY_UF, nc);
       //re-add the entries
       for (unsigned i=0; i<cond.size(); i++) {
         addEntry(m, cond[i], value[i]);
@@ -304,10 +304,11 @@ FullModelChecker::FullModelChecker(Env& env,
                                    QuantifiersRegistry& qr,
                                    TermRegistry& tr)
     : QModelBuilder(env, qs, qim, qr, tr),
-      d_fm(new FirstOrderModelFmc(env, qs, qr, tr))
+      d_fm(new FirstOrderModelFmc(env, qs, qr, tr)),
+      d_initFuncs(false)
 {
-  d_true = NodeManager::currentNM()->mkConst(true);
-  d_false = NodeManager::currentNM()->mkConst(false);
+  d_true = nodeManager()->mkConst(true);
+  d_false = nodeManager()->mkConst(false);
 }
 
 void FullModelChecker::finishInit() { d_model = d_fm.get(); }
@@ -361,20 +362,26 @@ bool FullModelChecker::preProcessBuildModel(TheoryModel* m) {
       preInitializeType(m, v.getType());
     }
   }
+  d_initFuncs = false;
   return true;
 }
 
-bool FullModelChecker::processBuildModel(TheoryModel* m){
+void FullModelChecker::initializeFunctions(TheoryModel* m)
+{
+  if (d_initFuncs)
+  {
+    return;
+  }
+  d_initFuncs = true;
   if (!m->areFunctionValuesEnabled())
   {
     // nothing to do if no functions
-    return true;
+    return;
   }
   // if higher-order, we must use the standard assignment method
   if (logicInfo().isHigherOrder())
   {
-    TheoryEngineModelBuilder::assignFunctions(m);
-    return true;
+    return;
   }
   FirstOrderModelFmc* fm = d_fm.get();
   Trace("fmc") << "---Full Model Check reset() " << std::endl;
@@ -499,7 +506,7 @@ bool FullModelChecker::processBuildModel(TheoryModel* m){
         }
         entry_children.push_back(ri);
       }
-      Node n = NodeManager::currentNM()->mkNode(Kind::APPLY_UF, children);
+      Node n = nodeManager()->mkNode(Kind::APPLY_UF, children);
       Node nv = fm->getRepresentative( v );
       Trace("fmc-model-debug")
           << "Representative of " << v << " is " << nv << std::endl;
@@ -507,7 +514,7 @@ bool FullModelChecker::processBuildModel(TheoryModel* m){
         Trace("fmc-warn") << "Warning : model for " << op << " has non-constant value in model " << nv << std::endl;
       }
       Node en = hasNonStar ? n
-                           : NodeManager::currentNM()->mkNode(Kind::APPLY_UF,
+                           : nodeManager()->mkNode(Kind::APPLY_UF,
                                                               entry_children);
       if( std::find(conds.begin(), conds.end(), n )==conds.end() ){
         Trace("fmc-model-debug") << "- add " << n << " -> " << nv << " (entry is " << en << ")" << std::endl;
@@ -543,7 +550,7 @@ bool FullModelChecker::processBuildModel(TheoryModel* m){
     }
 
     Trace("fmc-model-simplify") << "Simplifying " << op << "..." << std::endl;
-    fm->d_models[op]->simplify( this, fm );
+    fm->d_models[op]->simplify(nodeManager(), this, fm);
 
     if (TraceIsOn("fmc-model"))
     {
@@ -581,7 +588,6 @@ bool FullModelChecker::processBuildModel(TheoryModel* m){
       m->assignFunctionDefinition(it->first, f_def);
     }
   }
-  return TheoryEngineModelBuilder::processBuildModel( m );
 }
 
 void FullModelChecker::preInitializeType(TheoryModel* m, TypeNode tn)
@@ -655,6 +661,8 @@ void FullModelChecker::debugPrint(const char * tr, Node n, bool dispStar) {
 
 
 int FullModelChecker::doExhaustiveInstantiation( FirstOrderModel * fm, Node f, int effort ) {
+  // ensure that functions are assigned
+  initializeFunctions(fm->getTheoryModel());
   Trace("fmc") << "Full model check " << f << ", effort = " << effort << "..." << std::endl;
   // register the quantifier
   registerQuantifiedFormula(f);
@@ -1098,7 +1106,7 @@ void FullModelChecker::doCheck(FirstOrderModelFmc * fm, Node f, Def & d, Node n 
       Trace("fmc-debug") << "Simplify the definition..." << std::endl;
       d.debugPrint("fmc-debug", Node::null(), this);
     }
-    d.simplify(this, fm);
+    d.simplify(nodeManager(), this, fm);
     Trace("fmc-debug") << "Done simplifying" << std::endl;
   }
   if (TraceIsOn("fmc-debug"))
@@ -1391,7 +1399,7 @@ bool FullModelChecker::doMeet( FirstOrderModelFmc * fm, std::vector< Node > & co
 
 Node FullModelChecker::mkCond(const std::vector<Node>& cond)
 {
-  return NodeManager::currentNM()->mkNode(Kind::APPLY_UF, cond);
+  return nodeManager()->mkNode(Kind::APPLY_UF, cond);
 }
 
 Node FullModelChecker::mkCondDefault( FirstOrderModelFmc * fm, Node f) {
@@ -1466,7 +1474,7 @@ Node FullModelChecker::evaluateInterpreted( Node n, std::vector< Node > & vals )
         children.push_back( vals[i] );
       }
     }
-    Node nc = NodeManager::currentNM()->mkNode(n.getKind(), children);
+    Node nc = nodeManager()->mkNode(n.getKind(), children);
     Trace("fmc-eval") << "Evaluate " << nc << " to ";
     nc = rewrite(nc);
     Trace("fmc-eval") << nc << std::endl;
@@ -1493,8 +1501,7 @@ void FullModelChecker::registerQuantifiedFormula(Node q)
   {
     return;
   }
-  NodeManager* nm = NodeManager::currentNM();
-  SkolemManager* sm = nm->getSkolemManager();
+  NodeManager* nm = nodeManager();
   std::vector<TypeNode> types;
   for (const Node& v : q[0])
   {
@@ -1509,7 +1516,8 @@ void FullModelChecker::registerQuantifiedFormula(Node q)
     types.push_back(tn);
   }
   TypeNode typ = nm->mkFunctionType(types, nm->booleanType());
-  Node op = sm->mkDummySkolem("qfmc", typ, "op for full-model checking");
+  Node op =
+      NodeManager::mkDummySkolem("qfmc", typ, "op for full-model checking");
   d_quant_cond[q] = op;
 }
 

@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -104,8 +104,7 @@ int RelationalMatchGenerator::getNextMatch(InstMatch& m)
     if (m.set(d_vindex, s))
     {
       Trace("relational-match-gen") << "...success" << std::endl;
-      int ret = continueNextMatch(
-          m, InferenceId::QUANTIFIERS_INST_E_MATCHING_RELATIONAL);
+      int ret = continueNextMatch(m);
       if (ret > 0)
       {
         Trace("relational-match-gen") << "...returned " << ret << std::endl;
@@ -120,6 +119,11 @@ int RelationalMatchGenerator::getNextMatch(InstMatch& m)
     }
   }
   return -1;
+}
+
+InferenceId RelationalMatchGenerator::getInferenceId()
+{
+  return InferenceId::QUANTIFIERS_INST_E_MATCHING_RELATIONAL;
 }
 
 }  // namespace inst

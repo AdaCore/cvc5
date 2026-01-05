@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -48,37 +48,6 @@ TypeNode EqualityTypeRule::computeType(NodeManager* nodeManager,
         (*errOut) << "Type 2: " << rhsType << std::endl;
       }
       return TypeNode::null();
-    }
-  }
-  return nodeManager->booleanType();
-}
-
-TypeNode DistinctTypeRule::preComputeType(NodeManager* nm, TNode n)
-{
-  return nm->booleanType();
-}
-TypeNode DistinctTypeRule::computeType(NodeManager* nodeManager,
-                                       TNode n,
-                                       bool check,
-                                       std::ostream* errOut)
-{
-  if (check)
-  {
-    TNode::iterator child_it = n.begin();
-    TNode::iterator child_it_end = n.end();
-    TypeNode joinType = (*child_it).getTypeOrNull();
-    for (++child_it; child_it != child_it_end; ++child_it)
-    {
-      TypeNode currentType = (*child_it).getType();
-      joinType = joinType.leastUpperBound(currentType);
-      if (joinType.isNull())
-      {
-        if (errOut)
-        {
-          (*errOut) << "Not all arguments are of the same type";
-        }
-        return TypeNode::null();
-      }
     }
   }
   return nodeManager->booleanType();
@@ -185,11 +154,24 @@ TypeNode ApplyIndexedSymbolicTypeRule::computeType(NodeManager* nodeManager,
   return cn.getType();
 }
 
+TypeNode TypeOfTypeRule::preComputeType(NodeManager* nm, TNode n)
+{
+  return TypeNode::null();
+}
+
+TypeNode TypeOfTypeRule::computeType(NodeManager* nodeManager,
+                                     TNode n,
+                                     bool check,
+                                     std::ostream* errOut)
+{
+  return nodeManager->builtinOperatorType();
+}
+
 Node SortProperties::mkGroundTerm(TypeNode type)
 {
   // we typically use this method for sorts, although there are other types
   // where it is used as well, e.g. arrays that are not closed enumerable.
-  NodeManager * nm = NodeManager::currentNM();
+  NodeManager* nm = type.getNodeManager();
   SkolemManager* sm = nm->getSkolemManager();
   std::vector<Node> cacheVals;
   cacheVals.push_back(nm->mkConst(SortToTerm(type)));

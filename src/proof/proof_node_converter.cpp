@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -18,6 +18,13 @@
 #include "proof/proof.h"
 
 namespace cvc5::internal {
+
+ProofNodeConverterCallback::ProofNodeConverterCallback() {}
+ProofNodeConverterCallback::~ProofNodeConverterCallback() {}
+bool ProofNodeConverterCallback::shouldConvert(std::shared_ptr<ProofNode> pn)
+{
+  return false;
+}
 
 ProofNodeConverter::ProofNodeConverter(Env& env,
                                        ProofNodeConverterCallback& cb,
@@ -74,15 +81,27 @@ std::shared_ptr<ProofNode> ProofNodeConverter::process(
       const std::vector<std::shared_ptr<ProofNode>>& ccp = cur->getChildren();
       std::vector<std::shared_ptr<ProofNode>> pchildren;
       Trace("pf-convert") << "CONVERT " << cur->getRule() << std::endl;
+      bool childChanged = false;
       for (const std::shared_ptr<ProofNode>& cp : ccp)
       {
         it = visited.find(cp);
         Assert(it != visited.end());
         pchildren.push_back(it->second);
+        childChanged = childChanged || cp != it->second;
         Trace("pf-convert") << "- " << cp->getRule() << " " << cp->getResult()
                             << " ... " << it->second->getResult() << std::endl;
       }
-      std::shared_ptr<ProofNode> ret = processInternal(cur, pchildren);
+      std::shared_ptr<ProofNode> ret;
+      if (!childChanged && !d_cb.shouldConvert(cur))
+      {
+        // callback does not need to convert and we did not convert a child,
+        // just take as is.
+        ret = cur;
+      }
+      else
+      {
+        ret = processInternal(cur, pchildren);
+      }
       if (ret == nullptr)
       {
         return nullptr;

@@ -4,7 +4,7 @@
 #
 # This file is part of the cvc5 project.
 #
-# Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+# Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
 # in the top-level source directory and their institutional affiliations.
 # All rights reserved.  See the file COPYING in the top-level source
 # directory for licensing information.
@@ -128,6 +128,8 @@ libcvc5_add_sources(
   preprocessing/passes/theory_preprocess.h
   preprocessing/passes/unconstrained_simplifier.cpp
   preprocessing/passes/unconstrained_simplifier.h
+  preprocessing/passes/normalize.cpp
+  preprocessing/passes/normalize.h
   preprocessing/preprocessing_pass.cpp
   preprocessing/preprocessing_pass.h
   preprocessing/preprocessing_pass_context.cpp
@@ -158,8 +160,6 @@ libcvc5_add_sources(
   proof/alf/alf_print_channel.h
   proof/alf/alf_printer.cpp
   proof/alf/alf_printer.h
-  proof/annotation_proof_generator.cpp
-  proof/annotation_proof_generator.h
   proof/assumption_proof_generator.cpp
   proof/assumption_proof_generator.h
   proof/buffered_proof_generator.cpp
@@ -224,16 +224,22 @@ libcvc5_add_sources(
   proof/proof_step_buffer.h
   proof/resolution_proofs_util.cpp
   proof/resolution_proofs_util.h
+  proof/rewrite_proof_generator.cpp
+  proof/rewrite_proof_generator.h
   proof/subtype_elim_proof_converter.cpp
   proof/subtype_elim_proof_converter.h
   proof/trust_id.cpp
   proof/trust_id.h
   proof/trust_node.cpp
   proof/trust_node.h
+  proof/trust_proof_generator.cpp
+  proof/trust_proof_generator.h
   proof/theory_proof_step_buffer.cpp
   proof/theory_proof_step_buffer.h
   proof/unsat_core.cpp
   proof/unsat_core.h
+  proof/valid_witness_proof_generator.cpp
+  proof/valid_witness_proof_generator.h
   proof/alethe/alethe_let_binding.cpp
   proof/alethe/alethe_let_binding.h
   proof/alethe/alethe_node_converter.cpp
@@ -244,8 +250,14 @@ libcvc5_add_sources(
   proof/alethe/alethe_printer.cpp
   proof/alethe/alethe_proof_rule.cpp
   proof/alethe/alethe_proof_rule.h
-  prop/cadical.cpp
-  prop/cadical.h
+  prop/cadical/cadical.cpp
+  prop/cadical/cadical.h
+  prop/cadical/cdclt_propagator.cpp
+  prop/cadical/cdclt_propagator.h
+  prop/cadical/proof_tracer.cpp
+  prop/cadical/proof_tracer.h
+  prop/cadical/util.cpp
+  prop/cadical/util.h
   prop/cnf_stream.cpp
   prop/cnf_stream.h
   prop/cryptominisat.cpp
@@ -321,6 +333,8 @@ libcvc5_add_sources(
   smt/listeners.cpp
   smt/listeners.h
   smt/logic_exception.h
+  smt/illegal_checker.cpp
+  smt/illegal_checker.h
   smt/interpolation_solver.cpp
   smt/interpolation_solver.h
   smt/model.cpp
@@ -343,6 +357,8 @@ libcvc5_add_sources(
   smt/proof_manager.h
   smt/proof_final_callback.cpp
   smt/proof_final_callback.h
+  smt/proof_logger.cpp
+  smt/proof_logger.h
   smt/proof_post_processor.cpp
   smt/proof_post_processor.h
   smt/proof_post_processor_dsl.cpp
@@ -383,6 +399,8 @@ libcvc5_add_sources(
   theory/arith/arith_poly_norm.h
   theory/arith/arith_preprocess.cpp
   theory/arith/arith_preprocess.h
+  theory/arith/arith_proof_rcons.cpp
+  theory/arith/arith_proof_rcons.h
   theory/arith/arith_proof_utilities.cpp
   theory/arith/arith_proof_utilities.h
   theory/arith/arith_rewriter.cpp
@@ -473,10 +491,14 @@ libcvc5_add_sources(
   theory/arith/nl/coverings/variable_ordering.h
   theory/arith/nl/equality_substitution.cpp
   theory/arith/nl/equality_substitution.h
+  theory/arith/nl/ext/arith_nl_compare_proof_gen.cpp
+  theory/arith/nl/ext/arith_nl_compare_proof_gen.h
   theory/arith/nl/ext/constraint.cpp
   theory/arith/nl/ext/constraint.h
   theory/arith/nl/ext/factoring_check.cpp
   theory/arith/nl/ext/factoring_check.h
+  theory/arith/nl/ext/flatten_monomial_check.cpp
+  theory/arith/nl/ext/flatten_monomial_check.h
   theory/arith/nl/ext/monomial.cpp
   theory/arith/nl/ext/monomial.h
   theory/arith/nl/ext/monomial_bounds_check.cpp
@@ -495,6 +517,8 @@ libcvc5_add_sources(
   theory/arith/nl/ext_theory_callback.h
   theory/arith/nl/iand_solver.cpp
   theory/arith/nl/iand_solver.h
+  theory/arith/nl/piand_solver.cpp
+  theory/arith/nl/piand_solver.h
   theory/arith/nl/icp/candidate.cpp
   theory/arith/nl/icp/candidate.h
   theory/arith/nl/icp/contraction_origins.cpp
@@ -637,6 +661,8 @@ libcvc5_add_sources(
   theory/bv/bitblast/node_bitblaster.h
   theory/bv/bitblast/proof_bitblaster.cpp
   theory/bv/bitblast/proof_bitblaster.h
+  theory/bv/bv_pp_assert.cpp
+  theory/bv/bv_pp_assert.h
   theory/bv/bv_solver.h
   theory/bv/bv_solver_bitblast.cpp
   theory/bv/bv_solver_bitblast.h
@@ -644,6 +670,8 @@ libcvc5_add_sources(
   theory/bv/bv_solver_bitblast_internal.h
   theory/bv/int_blaster.cpp
   theory/bv/int_blaster.h
+  theory/bv/macro_rewrite_elaborator.cpp
+  theory/bv/macro_rewrite_elaborator.h
   theory/bv/proof_checker.cpp
   theory/bv/proof_checker.h
   theory/bv/theory_bv.cpp
@@ -759,8 +787,6 @@ libcvc5_add_sources(
   theory/incomplete_id.h
   theory/inference_id.cpp
   theory/inference_id.h
-  theory/inference_id_proof_annotator.cpp
-  theory/inference_id_proof_annotator.h
   theory/inference_manager_buffered.cpp
   theory/inference_manager_buffered.h
   theory/lemma_property.cpp
@@ -905,8 +931,8 @@ libcvc5_add_sources(
   theory/quantifiers/lazy_trie.h
   theory/quantifiers/master_eq_notify.cpp
   theory/quantifiers/master_eq_notify.h
-  theory/quantifiers/mbqi_fast_sygus.cpp
-  theory/quantifiers/mbqi_fast_sygus.h
+  theory/quantifiers/mbqi_enum.cpp
+  theory/quantifiers/mbqi_enum.h
   theory/quantifiers/oracle_checker.cpp
   theory/quantifiers/oracle_checker.h
   theory/quantifiers/oracle_engine.cpp
@@ -1259,6 +1285,10 @@ libcvc5_add_sources(
   theory/uf/cardinality_extension.h
   theory/uf/conversions_solver.cpp
   theory/uf/conversions_solver.h
+  theory/uf/diamonds_proof_generator.cpp
+  theory/uf/diamonds_proof_generator.h
+  theory/uf/distinct_extension.cpp
+  theory/uf/distinct_extension.h
   theory/uf/equality_engine.cpp
   theory/uf/equality_engine.h
   theory/uf/equality_engine_iterator.cpp
@@ -1299,6 +1329,9 @@ libcvc5_add_sources(
 set_source_files_properties(api/cpp/cvc5.cpp
   PROPERTIES COMPILE_OPTIONS
   "-Wno-deprecated-declarations;-Wno-error=deprecated-declarations")
+set_source_files_properties(api/c/cvc5.cpp
+  PROPERTIES COMPILE_OPTIONS
+  "-Wno-deprecated-declarations;-Wno-error=deprecated-declarations")
 set_source_files_properties(api/cpp/cvc5_parser.cpp
   PROPERTIES COMPILE_OPTIONS
   "-Wno-deprecated-declarations;-Wno-error=deprecated-declarations")
@@ -1319,6 +1352,7 @@ endif()
 set(options_toml_files
   options/arith_options.toml
   options/arrays_options.toml
+  options/bags_options.toml
   options/base_options.toml
   options/booleans_options.toml
   options/builtin_options.toml
@@ -1402,22 +1436,21 @@ add_custom_target(gen-options DEPENDS options/options.stamp)
 
 #-----------------------------------------------------------------------------#
 
-set(KINDS_FILES
-  ${PROJECT_SOURCE_DIR}/src/theory/builtin/kinds
-  ${PROJECT_SOURCE_DIR}/src/theory/booleans/kinds
-  ${PROJECT_SOURCE_DIR}/src/theory/uf/kinds
-  ${PROJECT_SOURCE_DIR}/src/theory/arith/kinds
-  ${PROJECT_SOURCE_DIR}/src/theory/bv/kinds
-  ${PROJECT_SOURCE_DIR}/src/theory/ff/kinds
-  ${PROJECT_SOURCE_DIR}/src/theory/fp/kinds
-  ${PROJECT_SOURCE_DIR}/src/theory/arrays/kinds
-  ${PROJECT_SOURCE_DIR}/src/theory/datatypes/kinds
-  ${PROJECT_SOURCE_DIR}/src/theory/sep/kinds
-  ${PROJECT_SOURCE_DIR}/src/theory/sets/kinds
-  ${PROJECT_SOURCE_DIR}/src/theory/bags/kinds
-  ${PROJECT_SOURCE_DIR}/src/theory/strings/kinds
-  ${PROJECT_SOURCE_DIR}/src/theory/quantifiers/kinds)
-
+  set(KINDS_TOML_FILES
+  ${PROJECT_SOURCE_DIR}/src/theory/builtin/kinds.toml
+  ${PROJECT_SOURCE_DIR}/src/theory/booleans/kinds.toml
+  ${PROJECT_SOURCE_DIR}/src/theory/uf/kinds.toml
+  ${PROJECT_SOURCE_DIR}/src/theory/arith/kinds.toml
+  ${PROJECT_SOURCE_DIR}/src/theory/bv/kinds.toml
+  ${PROJECT_SOURCE_DIR}/src/theory/ff/kinds.toml
+  ${PROJECT_SOURCE_DIR}/src/theory/fp/kinds.toml
+  ${PROJECT_SOURCE_DIR}/src/theory/arrays/kinds.toml
+  ${PROJECT_SOURCE_DIR}/src/theory/datatypes/kinds.toml
+  ${PROJECT_SOURCE_DIR}/src/theory/sep/kinds.toml
+  ${PROJECT_SOURCE_DIR}/src/theory/sets/kinds.toml
+  ${PROJECT_SOURCE_DIR}/src/theory/bags/kinds.toml
+  ${PROJECT_SOURCE_DIR}/src/theory/strings/kinds.toml
+  ${PROJECT_SOURCE_DIR}/src/theory/quantifiers/kinds.toml)
 #-----------------------------------------------------------------------------#
 
 set(REWRITES_FILES
@@ -1432,6 +1465,12 @@ set(REWRITES_FILES
   ${PROJECT_SOURCE_DIR}/src/theory/strings/rewrites
   ${PROJECT_SOURCE_DIR}/src/theory/strings/rewrites-regexp-membership
   ${PROJECT_SOURCE_DIR}/src/theory/uf/rewrites
+)
+# these files should only be enabled in expert builds and should
+# be partitioned into their own proof signature
+set(REWRITES_FILES_EXPERT
+  ${PROJECT_SOURCE_DIR}/src/theory/arith/rewrites-transcendentals
+  ${PROJECT_SOURCE_DIR}/src/theory/sets/rewrites-card
 )
 
 #-----------------------------------------------------------------------------#
@@ -1473,6 +1512,11 @@ target_include_directories(cvc5
 # On Windows, CMake's default install action places
 # DLLs into the runtime path (by default "bin")
 install(TARGETS cvc5 EXPORT cvc5-targets)
+
+if(NOT SKIP_SET_RPATH AND BUILD_SHARED_LIBS AND APPLE)
+  update_rpath_macos(libcvc5.dylib)
+  update_rpath_macos(libcvc5.${CVC5_SOVERSION}.dylib)
+endif()
 
 if(BUILD_SHARED_LIBS)
   set_target_properties(cvc5 PROPERTIES SOVERSION ${CVC5_SOVERSION})

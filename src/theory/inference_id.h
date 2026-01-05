@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -113,8 +113,8 @@ enum class InferenceId
   //-------------------- nonlinear core
   // simple congruence x=y => f(x)=f(y)
   ARITH_NL_CONGRUENCE,
-  // shared term value split (for naive theory combination)
-  ARITH_NL_SHARED_TERM_VALUE_SPLIT,
+  // for theory combination when NL model construction identifies shared terms
+  ARITH_NL_SHARED_TERM_SPLIT,
   // checkModel found a conflict with a quadratic equality
   ARITH_NL_CM_QUADRATIC_EQ,
   //-------------------- nonlinear incremental linearization solver
@@ -134,6 +134,8 @@ enum class InferenceId
   ARITH_NL_RES_INFER_BOUNDS,
   // tangent planes (NlSolver::checkTangentPlanes)
   ARITH_NL_TANGENT_PLANE,
+  // flatten monomials (NonlinearExtension::checkFlattenMonomials).
+  ARITH_NL_FLATTEN_MON,
   //-------------------- nonlinear transcendental solver
   // sine symmetry
   ARITH_NL_T_SINE_SYMM,
@@ -162,6 +164,9 @@ enum class InferenceId
   ARITH_NL_IAND_SUM_REFINE,
   // bitwise refinements (IAndSolver::checkFullRefine)
   ARITH_NL_IAND_BITWISE_REFINE,
+  //-------------------- nonlinear piand solver
+  // initial refinements (PIAndSolver::checkInitialRefine)
+  ARITH_NL_PIAND_INIT_REFINE,
   //-------------------- nonlinear pow2 solver
   // initial refinements (Pow2Solver::checkInitialRefine)
   ARITH_NL_POW2_INIT_REFINE,
@@ -169,8 +174,12 @@ enum class InferenceId
   ARITH_NL_POW2_VALUE_REFINE,
   // monotonicity refinements (Pow2Solver::checkFullRefine)
   ARITH_NL_POW2_MONOTONE_REFINE,
-  // trivial refinements (Pow2Solver::checkFullRefine)
-  ARITH_NL_POW2_TRIVIAL_CASE_REFINE,
+  // neg refinements (Pow2Solver::checkFullRefine)
+  ARITH_NL_POW2_NEG_REFINE,
+  // div0 refinements (Pow2Solver::checkFullRefine)
+  ARITH_NL_POW2_DIV0_CASE_REFINE,
+  // lower bound refinements (Pow2Solver::checkFullRefine)
+  ARITH_NL_POW2_LOWER_BOUND_CASE_REFINE,
   //-------------------- nonlinear coverings solver
   // conflict / infeasible subset obtained from coverings
   ARITH_NL_COVERING_CONFLICT,
@@ -364,6 +373,8 @@ enum class InferenceId
   QUANTIFIERS_INST_SYQI,
   // instantiations from model-based instantiation
   QUANTIFIERS_INST_MBQI,
+  // instantiations from model-based instantiation (mbqi-enum)
+  QUANTIFIERS_INST_MBQI_ENUM,
   // instantiations from enumerative instantiation
   QUANTIFIERS_INST_ENUM,
   // instantiations from pool instantiation
@@ -461,6 +472,8 @@ enum class InferenceId
   QUANTIFIERS_SYGUS_COMPLETE_ENUM,
   // infeasible due to side condition (e.g. for abduction)
   QUANTIFIERS_SYGUS_SC_INFEASIBLE,
+  // infeasible due to non-well-founded grammar
+  QUANTIFIERS_SYGUS_NO_WF_GRAMMAR,
   //-------------------- dynamic splitting
   // a dynamic split from quantifiers
   QUANTIFIERS_DSPLIT,
@@ -870,6 +883,10 @@ enum class InferenceId
   // Typically, t is an application of an extended function and s is a constant.
   // It is generally only inferred if P is a predicate over known terms.
   STRINGS_EXTF_EQ_REW,
+  // two terms rewrite to the same thing
+  // in particular this is of the form (E1 ^ E2) => t1 = t2
+  // where E1 => t1 = tr and E2 => t2 = tr.
+  STRINGS_EXTF_REW_SAME,
   // contain transitive
   //   ( str.contains( s, t ) ^ ~contains( s, r ) ) => ~contains( t, r ).
   STRINGS_CTN_TRANS,
@@ -904,11 +921,22 @@ enum class InferenceId
   STRINGS_REGISTER_TERM,
   // a split during collect model info
   STRINGS_CMI_SPLIT,
+  // constant sequence purification
+  STRINGS_CONST_SEQ_PURIFY,
+  // regular expression equality equivalence
+  STRINGS_RE_EQ_ELIM_EQUIV,
   //-------------------------------------- end strings theory
 
   //-------------------------------------- uf theory
   // Clause from the uf symmetry breaker
   UF_BREAK_SYMMETRY,
+  // Lemma of the form
+  // (~distinct(t1...tn) => ~blastDistinct(distinct(t1...tn))
+  UF_NOT_DISTINCT_ELIM,
+  // Conflict of the form (distinct(t1...tn) ^ ti = tj)
+  UF_DISTINCT_DEQ,
+  // Lemma of the form (~distinct(t1...tn) or ti != tj) sent during last call
+  UF_DISTINCT_DEQ_MODEL,
   //-------------------- cardinality extension to UF
   // The inferences below are described in Reynolds' thesis 2013.
   // conflict of the form (card_T n) => (not (distinct t1 ... tn))
@@ -969,6 +997,8 @@ enum class InferenceId
   // This is applied when lamda function f and ordinary function h are in the
   // same eq class.
   UF_HO_LAMBDA_APP_REDUCE,
+  // Lazy lambda lifting
+  UF_HO_LAMBDA_LAZY_LIFT,
   //-------------------- end model-construction specific part
   //-------------------- end HO extension to UF
   //-------------------- UF arith/bv conversions solver
@@ -1008,7 +1038,7 @@ const char* toString(InferenceId i);
 std::ostream& operator<<(std::ostream& out, InferenceId i);
 
 /** Make node from inference id */
-Node mkInferenceIdNode(InferenceId i);
+Node mkInferenceIdNode(NodeManager* nm, InferenceId i);
 
 /** get an inference identifier from a node, return false if we fail */
 bool getInferenceId(TNode n, InferenceId& i);

@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -146,6 +146,9 @@ const char* aletheRuleToString(AletheRule id)
     case AletheRule::BV_BITBLAST_STEP_CONST: return "bv_bitblast_step_const";
     case AletheRule::BV_BITBLAST_STEP_SIGN_EXTEND:
       return "bv_bitblast_step_sign_extend";
+    //================================================= Temporary
+    case AletheRule::BV_BITWISE_SLICING: return "bv_bitwise_slicing";
+    case AletheRule::BV_REPEAT_ELIM: return "bv_repeat_elim";
     //================================================= Hole
     case AletheRule::HOLE: return "hole";
     //================================================= Undefined rule
