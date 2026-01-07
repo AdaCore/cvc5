@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -185,6 +185,12 @@ class InstMatchGenerator : public IMGenerator {
       std::map<Node, InstMatchGenerator*>& pat_map_init);
   //-------------------------------end construction of inst match generators
 
+  /** Get the inference id, for statistics. */
+  InferenceId getInferenceId() override
+  {
+    return InferenceId::QUANTIFIERS_INST_E_MATCHING;
+  }
+
  protected:
   /** constructors
    *
@@ -313,7 +319,7 @@ class InstMatchGenerator : public IMGenerator {
   * value >0 if active add is false).  Its return value has the same semantics
   * as getNextMatch.
   */
-  int continueNextMatch(InstMatch& m, InferenceId id);
+  int continueNextMatch(InstMatch& m);
   /** Get inst match generator
    *
    * Gets the InstMatchGenerator that implements the

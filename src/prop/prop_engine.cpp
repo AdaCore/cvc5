@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -77,7 +77,8 @@ PropEngine::PropEngine(Env& env, TheoryEngine* te)
       d_theoryLemmaPg(d_env, d_env.getUserContext(), "PropEngine::ThLemmaPg"),
       d_ppm(nullptr),
       d_interrupted(false),
-      d_assumptions(d_env.getUserContext()),
+      d_assumptions(userContext()),
+      d_localLemmas(userContext()),
       d_stats(statisticsRegistry())
 {
   Trace("prop") << "Constructing the PropEngine" << std::endl;
@@ -90,12 +91,8 @@ PropEngine::PropEngine(Env& env, TheoryEngine* te)
   }
   else
   {
-    // log DRAT proofs if the mode is SKETCH.
-    bool logProofs =
-        (env.isSatProofProducing()
-         && options().proof.propProofMode == options::PropProofMode::SKETCH);
     d_satSolver = SatSolverFactory::createCadicalCDCLT(
-        d_env, statisticsRegistry(), env.getResourceManager(), "", logProofs);
+        d_env, statisticsRegistry(), env.getResourceManager(), "");
   }
 
   // CNF stream and theory proxy required pointers to each other, make the
@@ -110,15 +107,14 @@ PropEngine::PropEngine(Env& env, TheoryEngine* te)
 
   // connect theory proxy
   d_theoryProxy->finishInit(d_satSolver, d_cnfStream);
-  bool satProofs = d_env.isSatProofProducing();
-  if (satProofs)
+  // if proof producing at all
+  if (options().smt.produceProofs)
   {
     d_ppm.reset(
         new PropPfManager(env, d_satSolver, *d_cnfStream, d_assumptions));
   }
   // connect SAT solver
-  d_satSolver->initialize(
-      d_env.getContext(), d_theoryProxy, d_env.getUserContext(), d_ppm.get());
+  d_satSolver->initialize(d_theoryProxy, d_ppm.get());
 }
 
 void PropEngine::finishInit()
@@ -164,6 +160,13 @@ void PropEngine::assertInputFormulas(
     std::unordered_map<size_t, Node>& skolemMap)
 {
   Assert(!d_inCheckSat) << "Sat solver in solve()!";
+  // now presolve with prop proof manager so proof logging is on. This must be
+  // done *before* the PropEngine checkSat call because when asserting formulas
+  // to the theory engine lemmas may already be generated.
+  if (d_ppm != nullptr)
+  {
+    d_ppm->presolve();
+  }
   d_theoryProxy->notifyInputFormulas(assertions, skolemMap);
   int64_t natomsPre = d_cnfStream->d_stats.d_numAtoms.get();
   for (const Node& node : assertions)
@@ -221,9 +224,19 @@ void PropEngine::assertLemma(theory::InferenceId id,
 
 void PropEngine::assertTrustedLemmaInternal(theory::InferenceId id,
                                             TrustNode trn,
-                                            bool removable)
+                                            bool removable,
+                                            bool local)
 {
   Node node = trn.getNode();
+  if (local)
+  {
+    // if local, filter here
+    if (d_localLemmas.find(node) != d_localLemmas.end())
+    {
+      return;
+    }
+    d_localLemmas.insert(node);
+  }
   Trace("prop::lemmas") << "assertLemma(" << node << ")" << std::endl;
   if (isOutputOn(OutputTag::LEMMAS))
   {
@@ -239,7 +252,7 @@ void PropEngine::assertTrustedLemmaInternal(theory::InferenceId id,
   // if we are producing proofs for the SAT solver but not for theory engine,
   // then we need to prevent the lemma of being added as an assumption (since
   // the generator will be null). We use the default proof generator for lemmas.
-  if (isProofEnabled() && !d_env.isTheoryProofProducing()
+  if (d_env.isSatProofProducing() && !d_env.isTheoryProofProducing()
       && !trn.getGenerator())
   {
     Node actualNode = negated ? node.notNode() : node;
@@ -320,12 +333,14 @@ void PropEngine::assertLemmasInternal(
     {
       trn = d_theoryProxy->inprocessLemma(trn);
     }
-    assertTrustedLemmaInternal(id, trn, removable);
+    assertTrustedLemmaInternal(id, trn, removable, local);
   }
   for (const theory::SkolemLemma& lem : ppLemmas)
   {
-    assertTrustedLemmaInternal(
-        theory::InferenceId::THEORY_PP_SKOLEM_LEM, lem.d_lemma, removable);
+    assertTrustedLemmaInternal(theory::InferenceId::THEORY_PP_SKOLEM_LEM,
+                               lem.d_lemma,
+                               removable,
+                               local);
   }
   // Note that this order is important for theories that send lemmas during
   // preregistration, as it impacts the order in which lemmas are processed
@@ -351,8 +366,10 @@ void PropEngine::assertLemmasInternal(
 
 void PropEngine::notifyExplainedPropagation(TrustNode texp)
 {
-  Assert(d_ppm != nullptr);
-  d_ppm->notifyExplainedPropagation(texp);
+  if (d_ppm != nullptr)
+  {
+    d_ppm->notifyExplainedPropagation(texp);
+  }
 }
 
 void PropEngine::preferPhase(TNode n, bool phase)
@@ -445,22 +462,30 @@ Result PropEngine::checkSat() {
   // Note this currently ignores conflicts (a dangerous practice).
   d_theoryProxy->presolve();
 
+  // add the assumptions
+  std::vector<SatLiteral> assumptions;
+  for (const Node& node : d_assumptions)
+  {
+    assumptions.push_back(d_cnfStream->getLiteral(node));
+  }
+
+  // now log preprocessing
+  if (d_ppm != nullptr)
+  {
+    d_ppm->logPreprocessing();
+  }
+
   // Reset the interrupted flag
   d_interrupted = false;
 
   // Check the problem
   SatValue result;
-  if (d_assumptions.size() == 0)
+  if (assumptions.empty())
   {
     result = d_satSolver->solve();
   }
   else
   {
-    std::vector<SatLiteral> assumptions;
-    for (const Node& node : d_assumptions)
-    {
-      assumptions.push_back(d_cnfStream->getLiteral(node));
-    }
     result = d_satSolver->solve(assumptions);
   }
 
@@ -501,6 +526,12 @@ Result PropEngine::checkSat() {
                            d_theoryProxy->getRefutationUnsoundId());
     return Result(Result::UNKNOWN, UnknownExplanation::INCOMPLETE);
   }
+
+  if (d_ppm != nullptr)
+  {
+    d_ppm->postsolve(result);
+  }
+
   return Result(result == SAT_VALUE_TRUE ? Result::SAT : Result::UNSAT);
 }
 
@@ -773,7 +804,35 @@ void PropEngine::getUnsatCore(std::vector<Node>& core)
 std::vector<Node> PropEngine::getUnsatCoreLemmas()
 {
   Assert(d_env.isSatProofProducing());
-  return d_ppm->getUnsatCoreLemmas();
+  std::vector<Node> lems = d_ppm->getUnsatCoreLemmas();
+  if (isOutputOn(OutputTag::UNSAT_CORE_LEMMAS))
+  {
+    output(OutputTag::UNSAT_CORE_LEMMAS)
+        << ";; unsat core lemmas start" << std::endl;
+    std::stringstream ss;
+    for (const Node& lem : lems)
+    {
+      output(OutputTag::UNSAT_CORE_LEMMAS) << "(unsat-core-lemma ";
+      output(OutputTag::UNSAT_CORE_LEMMAS)
+          << SkolemManager::getOriginalForm(lem);
+      uint64_t timestamp = 0;
+      theory::InferenceId id = d_ppm->getInferenceIdFor(lem, timestamp);
+      if (id != theory::InferenceId::NONE)
+      {
+        output(OutputTag::UNSAT_CORE_LEMMAS) << " :source " << id;
+      }
+      output(OutputTag::UNSAT_CORE_LEMMAS) << " :timestamp " << timestamp;
+      output(OutputTag::UNSAT_CORE_LEMMAS) << ")" << std::endl;
+      // for trace below
+      ss << id << ", " << timestamp << std::endl;
+    }
+    output(OutputTag::UNSAT_CORE_LEMMAS)
+        << ";; unsat core lemmas end" << std::endl;
+    // print in csv form for debugging
+    Trace("ocl-timestamp") << "TIMESTAMPS" << std::endl;
+    Trace("ocl-timestamp") << ss.str() << std::endl;
+  }
+  return lems;
 }
 
 std::vector<Node> PropEngine::getLearnedZeroLevelLiterals(

@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -81,6 +81,11 @@ class CVC5_EXPORT Cmd
   virtual void invoke(cvc5::Solver* solver,
                       parser::SymManager* sm,
                       std::ostream& out);
+  /**
+   * Same as invoke, but prints the result to the output stream associated to the solver.
+   */
+  virtual void invokeAndPrintResult(cvc5::Solver* solver,
+                                    parser::SymManager* sm);
 
   /**
    * @return A string representation of this result.
@@ -724,6 +729,22 @@ class CVC5_EXPORT GetValueCommand : public Cmd
   std::string getCommandName() const override;
   void toStream(std::ostream& out) const override;
 }; /* class GetValueCommand */
+
+class CVC5_EXPORT GetModelDomainElementsCommand : public Cmd
+{
+ protected:
+  cvc5::Sort d_sort;
+  std::vector<cvc5::Term> d_result;
+
+ public:
+  GetModelDomainElementsCommand(cvc5::Sort sort);
+  cvc5::Sort getSort() const;
+  const std::vector<cvc5::Term>& getResult() const;
+  void invoke(cvc5::Solver* solver, parser::SymManager* sm) override;
+  void printResult(cvc5::Solver* solver, std::ostream& out) const override;
+  std::string getCommandName() const override;
+  void toStream(std::ostream& out) const override;
+}; /* class GetModelDomainElementsCommand */
 
 class CVC5_EXPORT GetAssignmentCommand : public Cmd
 {

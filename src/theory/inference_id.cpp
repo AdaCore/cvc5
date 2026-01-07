@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -67,8 +67,8 @@ const char* toString(InferenceId i)
     case InferenceId::ARITH_PP_ELIM_OPERATORS_LEMMA:
       return "ARITH_PP_ELIM_OPERATORS_LEMMA";
     case InferenceId::ARITH_NL_CONGRUENCE: return "ARITH_NL_CONGRUENCE";
-    case InferenceId::ARITH_NL_SHARED_TERM_VALUE_SPLIT:
-      return "ARITH_NL_SHARED_TERM_VALUE_SPLIT";
+    case InferenceId::ARITH_NL_SHARED_TERM_SPLIT:
+      return "ARITH_NL_SHARED_TERM_SPLIT";
     case InferenceId::ARITH_NL_CM_QUADRATIC_EQ:
       return "ARITH_NL_CM_QUADRATIC_EQ";
     case InferenceId::ARITH_NL_SPLIT_ZERO: return "ARITH_NL_SPLIT_ZERO";
@@ -81,6 +81,7 @@ const char* toString(InferenceId i)
     case InferenceId::ARITH_NL_RES_INFER_BOUNDS:
       return "ARITH_NL_RES_INFER_BOUNDS";
     case InferenceId::ARITH_NL_TANGENT_PLANE: return "ARITH_NL_TANGENT_PLANE";
+    case InferenceId::ARITH_NL_FLATTEN_MON: return "ARITH_NL_FLATTEN_MON";
     case InferenceId::ARITH_NL_T_SINE_SYMM: return "ARITH_NL_T_SINE_SYMM";
     case InferenceId::ARITH_NL_T_SINE_BOUNDARY_REDUCE:
       return "ARITH_NL_T_SINE_BOUNDARY_REDUCE";
@@ -100,14 +101,20 @@ const char* toString(InferenceId i)
       return "ARITH_NL_IAND_SUM_REFINE";
     case InferenceId::ARITH_NL_IAND_BITWISE_REFINE:
       return "ARITH_NL_IAND_BITWISE_REFINE";
+    case InferenceId::ARITH_NL_PIAND_INIT_REFINE:
+      return "ARITH_NL_PIAND_INIT_REFINE";
     case InferenceId::ARITH_NL_POW2_INIT_REFINE:
       return "ARITH_NL_POW2_INIT_REFINE";
     case InferenceId::ARITH_NL_POW2_VALUE_REFINE:
       return "ARITH_NL_POW2_VALUE_REFINE";
     case InferenceId::ARITH_NL_POW2_MONOTONE_REFINE:
       return "ARITH_NL_POW2_MONOTONE_REFINE";
-    case InferenceId::ARITH_NL_POW2_TRIVIAL_CASE_REFINE:
-      return "ARITH_NL_POW2_TRIVIAL_CASE_REFINE";
+    case InferenceId::ARITH_NL_POW2_NEG_REFINE:
+      return "ARITH_NL_POW2_NEG_REFINE";
+    case InferenceId::ARITH_NL_POW2_DIV0_CASE_REFINE:
+      return "ARITH_NL_POW2_DIV0_CASE_REFINE";
+    case InferenceId::ARITH_NL_POW2_LOWER_BOUND_CASE_REFINE:
+      return "ARITH_NL_POW2_LOWER_BOUND_CASE_REFINE";
     case InferenceId::ARITH_NL_COVERING_CONFLICT: return "ARITH_NL_COVERING_CONFLICT";
     case InferenceId::ARITH_NL_COVERING_EXCLUDED_INTERVAL:
       return "ARITH_NL_COVERING_EXCLUDED_INTERVAL";
@@ -248,6 +255,8 @@ const char* toString(InferenceId i)
     case InferenceId::QUANTIFIERS_INST_CEGQI: return "QUANTIFIERS_INST_CEGQI";
     case InferenceId::QUANTIFIERS_INST_SYQI: return "QUANTIFIERS_INST_SYQI";
     case InferenceId::QUANTIFIERS_INST_MBQI: return "QUANTIFIERS_INST_MBQI";
+    case InferenceId::QUANTIFIERS_INST_MBQI_ENUM:
+      return "QUANTIFIERS_INST_MBQI_ENUM";
     case InferenceId::QUANTIFIERS_INST_ENUM: return "QUANTIFIERS_INST_ENUM";
     case InferenceId::QUANTIFIERS_INST_POOL: return "QUANTIFIERS_INST_POOL";
     case InferenceId::QUANTIFIERS_INST_POOL_TUPLE:
@@ -330,6 +339,8 @@ const char* toString(InferenceId i)
       return "QUANTIFIERS_SYGUS_COMPLETE_ENUM";
     case InferenceId::QUANTIFIERS_SYGUS_SC_INFEASIBLE:
       return "QUANTIFIERS_SYGUS_SC_INFEASIBLE";
+    case InferenceId::QUANTIFIERS_SYGUS_NO_WF_GRAMMAR:
+      return "QUANTIFIERS_SYGUS_NO_WF_GRAMMAR";
     case InferenceId::QUANTIFIERS_DSPLIT: return "QUANTIFIERS_DSPLIT";
     case InferenceId::QUANTIFIERS_CONJ_GEN_SPLIT:
       return "QUANTIFIERS_CONJ_GEN_SPLIT";
@@ -525,6 +536,7 @@ const char* toString(InferenceId i)
     case InferenceId::STRINGS_EXTF_D: return "STRINGS_EXTF_D";
     case InferenceId::STRINGS_EXTF_D_N: return "STRINGS_EXTF_D_N";
     case InferenceId::STRINGS_EXTF_EQ_REW: return "STRINGS_EXTF_EQ_REW";
+    case InferenceId::STRINGS_EXTF_REW_SAME: return "STRINGS_EXTF_REW_SAME";
     case InferenceId::STRINGS_CTN_TRANS: return "STRINGS_CTN_TRANS";
     case InferenceId::STRINGS_CTN_DECOMPOSE: return "STRINGS_CTN_DECOMPOSE";
     case InferenceId::STRINGS_CTN_NEG_EQUAL: return "STRINGS_CTN_NEG_EQUAL";
@@ -539,8 +551,15 @@ const char* toString(InferenceId i)
       return "STRINGS_REGISTER_TERM_ATOMIC";
     case InferenceId::STRINGS_REGISTER_TERM: return "STRINGS_REGISTER_TERM";
     case InferenceId::STRINGS_CMI_SPLIT: return "STRINGS_CMI_SPLIT";
+    case InferenceId::STRINGS_CONST_SEQ_PURIFY:
+      return "STRINGS_CONST_SEQ_PURIFY";
+    case InferenceId::STRINGS_RE_EQ_ELIM_EQUIV:
+      return "STRINGS_RE_EQ_ELIM_EQUIV";
 
     case InferenceId::UF_BREAK_SYMMETRY: return "UF_BREAK_SYMMETRY";
+    case InferenceId::UF_NOT_DISTINCT_ELIM: return "UF_NOT_DISTINCT_ELIM";
+    case InferenceId::UF_DISTINCT_DEQ: return "UF_DISTINCT_DEQ";
+    case InferenceId::UF_DISTINCT_DEQ_MODEL: return "UF_DISTINCT_DEQ_MODEL";
     case InferenceId::UF_CARD_CLIQUE: return "UF_CARD_CLIQUE";
     case InferenceId::UF_CARD_COMBINED: return "UF_CARD_COMBINED";
     case InferenceId::UF_CARD_ENFORCE_NEGATIVE: return "UF_CARD_ENFORCE_NEGATIVE";
@@ -558,6 +577,7 @@ const char* toString(InferenceId i)
       return "UF_HO_MODEL_EXTENSIONALITY";
     case InferenceId::UF_HO_LAMBDA_UNIV_EQ: return "HO_LAMBDA_UNIV_EQ";
     case InferenceId::UF_HO_LAMBDA_APP_REDUCE: return "HO_LAMBDA_APP_REDUCE";
+    case InferenceId::UF_HO_LAMBDA_LAZY_LIFT: return "UF_HO_LAMBDA_LAZY_LIFT";
     case InferenceId::UF_ARITH_BV_CONV_REDUCTION:
       return "UF_ARITH_BV_CONV_REDUCTION";
     case InferenceId::UF_ARITH_BV_CONV_VALUE_REFINE:
@@ -579,10 +599,9 @@ std::ostream& operator<<(std::ostream& out, InferenceId i)
   return out;
 }
 
-Node mkInferenceIdNode(InferenceId i)
+Node mkInferenceIdNode(NodeManager* nm, InferenceId i)
 {
-  return NodeManager::currentNM()->mkConstInt(
-      Rational(static_cast<uint32_t>(i)));
+  return nm->mkConstInt(Rational(static_cast<uint32_t>(i)));
 }
 
 bool getInferenceId(TNode n, InferenceId& i)

@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -35,7 +35,13 @@ void UfModelTreeNode::clear(){
 }
 
 //set value function
-void UfModelTreeNode::setValue( TheoryModel* m, Node n, Node v, std::vector< int >& indexOrder, bool ground, int argIndex ){
+void UfModelTreeNode::setValue(const TheoryModel* m,
+                               Node n,
+                               Node v,
+                               std::vector<int>& indexOrder,
+                               bool ground,
+                               int argIndex)
+{
   if( d_data.empty() ){
     //overwrite value if either at leaf or this is a fresh tree
     d_value = v;
@@ -81,16 +87,15 @@ Node UfModelTreeNode::getFunctionValue(const std::vector<Node>& args,
       }
     }
 
-    NodeManager* nm = NodeManager::currentNM();
     Node retNode = defaultValue;
     // condense function values
     for (size_t i = 0, cargs = caseArgs.size(); i < cargs; i++)
     {
       size_t ii = cargs - i - 1;
-      retNode = nm->mkNode(Kind::ITE,
-                           args[index].eqNode(caseArgs[ii]),
-                           caseValues[caseArgs[ii]],
-                           retNode);
+      retNode = NodeManager::mkNode(Kind::ITE,
+                                    args[index].eqNode(caseArgs[ii]),
+                                    caseValues[caseArgs[ii]],
+                                    retNode);
     }
     return retNode;
   }
@@ -99,7 +104,8 @@ Node UfModelTreeNode::getFunctionValue(const std::vector<Node>& args,
 }
 
 //update function
-void UfModelTreeNode::update( TheoryModel* m ){
+void UfModelTreeNode::update(const TheoryModel* m)
+{
   if( !d_value.isNull() ){
     d_value = m->getRepresentative( d_value );
   }
@@ -180,7 +186,12 @@ void indent( std::ostream& out, int ind ){
   }
 }
 
-void UfModelTreeNode::debugPrint( std::ostream& out, TheoryModel* m, std::vector< int >& indexOrder, int ind, int arg ){
+void UfModelTreeNode::debugPrint(std::ostream& out,
+                                 const TheoryModel* m,
+                                 std::vector<int>& indexOrder,
+                                 int ind,
+                                 int arg)
+{
   if( !d_data.empty() ){
     for( std::map< Node, UfModelTreeNode >::iterator it = d_data.begin(); it != d_data.end(); ++it ){
       if( !it->first.isNull() ){
@@ -207,9 +218,8 @@ Node UfModelTree::getFunctionValue(const std::vector<Node>& args, Rewriter* r)
   {
     body = r->rewrite(body);
   }
-  Node boundVarList =
-      NodeManager::currentNM()->mkNode(Kind::BOUND_VAR_LIST, args);
-  return NodeManager::currentNM()->mkNode(Kind::LAMBDA, boundVarList, body);
+  Node boundVarList = body.getNodeManager()->mkNode(Kind::BOUND_VAR_LIST, args);
+  return NodeManager::mkNode(Kind::LAMBDA, boundVarList, body);
 }
 
 Node UfModelTree::getFunctionValue(const std::string& argPrefix, Rewriter* r)
@@ -219,7 +229,7 @@ Node UfModelTree::getFunctionValue(const std::string& argPrefix, Rewriter* r)
   for( size_t i=0; i<type.getNumChildren()-1; i++ ){
     std::stringstream ss;
     ss << argPrefix << (i+1);
-    vars.push_back( NodeManager::currentNM()->mkBoundVar( ss.str(), type[i] ) );
+    vars.push_back(NodeManager::mkBoundVar(ss.str(), type[i]));
   }
   return getFunctionValue(vars, r);
 }

@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -35,6 +35,7 @@ class UninterpretedSortValue
 
   const Integer& getIndex() const { return d_index; }
   const TypeNode& getType() const;
+  std::string getSymbol() const;
 
   bool operator==(const UninterpretedSortValue& val) const;
   bool operator!=(const UninterpretedSortValue& val) const

@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -152,8 +152,7 @@ int InstMatchGeneratorMultiLinear::getNextMatch(InstMatch& m)
       << "InstMatchGeneratorMultiLinear::getNextMatch : continue match "
       << std::endl;
   Assert(d_next != nullptr);
-  int ret_val =
-      continueNextMatch(m, InferenceId::QUANTIFIERS_INST_E_MATCHING_MTL);
+  int ret_val = continueNextMatch(m);
   if (ret_val > 0)
   {
     Trace("multi-trigger-linear")
@@ -171,6 +170,11 @@ int InstMatchGeneratorMultiLinear::getNextMatch(InstMatch& m)
     }
   }
   return ret_val;
+}
+
+InferenceId InstMatchGeneratorMultiLinear::getInferenceId()
+{
+  return InferenceId::QUANTIFIERS_INST_E_MATCHING_MTL;
 }
 
 }  // namespace inst

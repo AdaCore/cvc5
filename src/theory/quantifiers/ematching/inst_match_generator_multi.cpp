@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -213,7 +213,7 @@ void InstMatchGeneratorMulti::processNewInstantiations(InstMatch& m,
   {
     // m is an instantiation
     std::vector<Node> mc = m.get();
-    if (sendInstantiation(mc, InferenceId::QUANTIFIERS_INST_E_MATCHING_MT))
+    if (sendInstantiation(mc))
     {
       addedLemmas++;
       Trace("multi-trigger-cache-debug")
@@ -301,6 +301,11 @@ void InstMatchGeneratorMulti::processNewInstantiations(InstMatch& m,
                              endChildIndex,
                              modEq);
   }
+}
+
+InferenceId InstMatchGeneratorMulti::getInferenceId()
+{
+  return InferenceId::QUANTIFIERS_INST_E_MATCHING_MT;
 }
 
 }  // namespace inst

@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -96,6 +96,10 @@ class IMGenerator : protected EnvObj
    * A heuristic value indicating how active this generator is.
    */
   virtual int getActiveScore() { return 0; }
+  /**
+   * Get the inference id, for statistics.
+   */
+  virtual InferenceId getInferenceId() = 0;
 
  protected:
   /** send instantiation
@@ -107,7 +111,7 @@ class IMGenerator : protected EnvObj
    * indicating that an instantiation was enqueued in the quantifier engine's
    * lemma cache.
    */
-  bool sendInstantiation(std::vector<Node>& terms, InferenceId id);
+  bool sendInstantiation(std::vector<Node>& terms);
   /** The parent trigger that owns this */
   Trigger* d_tparent;
   /** Reference to the state of the quantifiers engine */

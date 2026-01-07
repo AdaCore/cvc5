@@ -4,7 +4,7 @@
  *
  * This file is part of the cvc5 project.
  *
- * Copyright (c) 2009-2024 by the authors listed in the file AUTHORS
+ * Copyright (c) 2009-2025 by the authors listed in the file AUTHORS
  * in the top-level source directory and their institutional affiliations.
  * All rights reserved.  See the file COPYING in the top-level source
  * directory for licensing information.
@@ -75,7 +75,7 @@ public:
   bool addEntry( FirstOrderModelFmc * m, Node c, Node v);
   Node evaluate( FirstOrderModelFmc * m, std::vector<Node>& inst );
   int getGeneralizationIndex( FirstOrderModelFmc * m, std::vector<Node>& inst );
-  void simplify( FullModelChecker * mc, FirstOrderModelFmc * m );
+  void simplify(NodeManager* nm, FullModelChecker* mc, FirstOrderModelFmc* m);
   void debugPrint(const char * tr, Node op, FullModelChecker * m);
 };/* class Def */
 
@@ -173,10 +173,15 @@ protected:
 
   /** process build model */
   bool preProcessBuildModel(TheoryModel* m) override;
-  bool processBuildModel(TheoryModel* m) override;
 
   bool useSimpleModels();
  private:
+  /**
+   * Initialize functions for exhaustive instantiation. Called at the beginning
+   * of doExhaustiveInstantiation to ensure data structures in this class are
+   * initialized.
+   */
+  void initializeFunctions(TheoryModel* m);
   /**
    * Register quantified formula.
    * This checks whether q can be handled by model-based instantiation and
@@ -190,6 +195,8 @@ protected:
    * class that is specialized for this class.
    */
   std::unique_ptr<FirstOrderModelFmc> d_fm;
+  /** Have we intialized functions this round? */
+  bool d_initFuncs;
 };/* class FullModelChecker */
 
 }  // namespace fmcheck
